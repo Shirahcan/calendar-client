@@ -186,7 +186,7 @@ class FakeCalendarClient implements CalendarClient
         return $this->move($bookingId, [Booking::PENDING], Booking::DECLINED);
     }
 
-    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null): Booking
+    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false): Booking
     {
         $this->log(__FUNCTION__, func_get_args());
         $b = $this->find($bookingId);
@@ -197,7 +197,9 @@ class FakeCalendarClient implements CalendarClient
             throw new SlotUnavailable('That time is no longer available. Please pick another.', 'slot_unavailable', 409);
         }
 
-        $length = (new DateTimeImmutable($b['end_utc']))->getTimestamp() - (new DateTimeImmutable($b['start_utc']))->getTimestamp();
+        $length = $end !== null
+            ? $end->getTimestamp() - $start->getTimestamp()
+            : (new DateTimeImmutable($b['end_utc']))->getTimestamp() - (new DateTimeImmutable($b['start_utc']))->getTimestamp();
         $b['start_utc'] = $this->iso(DateTimeImmutable::createFromInterface($start));
         $b['end_utc'] = $this->iso((DateTimeImmutable::createFromInterface($start))->modify("+{$length} seconds"));
 
@@ -299,6 +301,34 @@ class FakeCalendarClient implements CalendarClient
     {
         $this->log(__FUNCTION__, func_get_args());
         unset($this->mirrors[$ref]);
+    }
+
+    public function promoteMirror(string $ref, array $externalEvents = []): Booking
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $m = $this->mirrors[$ref] ?? throw new CalendarNotFound('No mirror with that ref.', null, 404);
+        unset($this->mirrors[$ref]);
+        $id = 'b-'.(count($this->bookings) + 1);
+
+        return $this->save([
+            'id' => $id, 'product_ref' => $ref, 'booking_type' => null, 'kind' => 'host_created', 'state' => Booking::CONFIRMED,
+            'start_utc' => $this->iso(new DateTimeImmutable($m['start'])), 'end_utc' => $this->iso(new DateTimeImmutable($m['end'])),
+            'hold_expires_at' => null, 'hosts' => $m['hosts'], 'participants' => [], 'title' => null, 'location' => null,
+            'cancelled_by' => null, 'cancel_reason' => null, 'write_status' => $externalEvents ? 'written' : null, 'open_proposal' => null,
+        ]);
+    }
+
+    public function updateDetails(string $bookingId, ?string $title = null, ?string $description = null, ?string $location = null): Booking
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $b = $this->find($bookingId);
+        foreach (['title' => $title, 'location' => $location] as $k => $v) {
+            if ($v !== null) {
+                $b[$k] = $v;
+            }
+        }
+
+        return $this->save($b);
     }
 
     public function adoptConnections(array $rows): array

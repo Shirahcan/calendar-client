@@ -112,9 +112,19 @@ class CalendarServiceClient implements CalendarClient
         return $this->bookingAction($bookingId, 'decline', ['actor' => $actor, 'reason' => $reason]);
     }
 
-    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null): Booking
+    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false): Booking
     {
-        return $this->bookingAction($bookingId, 'reschedule', ['start' => $start->format(DATE_ATOM), 'actor' => $actor, 'reason' => $reason]);
+        return $this->bookingAction($bookingId, 'reschedule', [
+            'start' => $start->format(DATE_ATOM), 'end' => $end?->format(DATE_ATOM),
+            'host_override' => $hostOverride ?: null, 'actor' => $actor, 'reason' => $reason,
+        ]);
+    }
+
+    public function updateDetails(string $bookingId, ?string $title = null, ?string $description = null, ?string $location = null): Booking
+    {
+        return Booking::fromArray($this->send('PATCH', 'api/v1/bookings/'.rawurlencode($bookingId), array_filter(
+            ['title' => $title, 'description' => $description, 'location' => $location], fn ($v) => $v !== null
+        )));
     }
 
     public function propose(string $bookingId, DateTimeInterface $start, string $proposedBy, ?string $actor = null, ?DateTimeInterface $expiresAt = null): array
@@ -168,6 +178,11 @@ class CalendarServiceClient implements CalendarClient
     public function removeMirror(string $ref): void
     {
         $this->send('DELETE', 'api/v1/mirror/'.rawurlencode($ref));
+    }
+
+    public function promoteMirror(string $ref, array $externalEvents = []): Booking
+    {
+        return Booking::fromArray($this->send('POST', 'api/v1/mirror/'.rawurlencode($ref).'/promote', ['external_events' => array_values($externalEvents)]));
     }
 
     public function events(string $hostAuthId, DateTimeInterface $from, DateTimeInterface $to): array

@@ -192,4 +192,35 @@ class ClientTest extends TestCase
         $this->assertStringNotContainsString('SECRET', json_encode($fake->calls));
         $this->assertCount(1, $fake->adopted);
     }
+
+    public function test_cutover_calls_send_what_the_service_expects(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['success' => true, 'data' => $this->bookingData(['end_utc' => '2026-10-13T00:30:00Z'])]),
+            $this->json(200, ['success' => true, 'data' => $this->bookingData(['title' => 'Consultation'])]),
+            $this->json(200, ['success' => true, 'data' => $this->bookingData(['kind' => 'host_created'])]),
+        );
+
+        $client->reschedule('b1', new DateTimeImmutable('2026-10-13T00:00:00Z'), null, null, new DateTimeImmutable('2026-10-13T00:30:00Z'), true);
+        $client->updateDetails('b1', 'Consultation', null, 'https://x.test/m/1');
+        $client->promoteMirror('meeting:7', [['provider' => 'google', 'account_email' => 'a@b.c', 'event_id' => 'e1']]);
+
+        $body = fn (int $i) => json_decode((string) $this->history[$i]['request']->getBody(), true);
+        $this->assertSame(['start' => '2026-10-13T00:00:00+00:00', 'end' => '2026-10-13T00:30:00+00:00', 'host_override' => true], $body(0));
+        $this->assertSame('PATCH', $this->history[1]['request']->getMethod());
+        $this->assertSame(['title' => 'Consultation', 'location' => 'https://x.test/m/1'], $body(1));
+        $this->assertSame('/api/v1/mirror/meeting%3A7/promote', $this->history[2]['request']->getUri()->getPath());
+    }
+
+    public function test_the_fake_promotes_a_mirror_into_a_booking(): void
+    {
+        $fake = new FakeCalendarClient();
+        $fake->mirror('meeting:7', ['auth-1'], new DateTimeImmutable('2026-10-12T14:00:00Z'), new DateTimeImmutable('2026-10-12T15:00:00Z'));
+
+        $b = $fake->promoteMirror('meeting:7');
+
+        $this->assertSame('host_created', $b->raw['kind']);
+        $this->assertSame([], $fake->mirrors);
+        $this->assertSame('2026-10-12T15:30:00Z', $fake->reschedule($b->id, new DateTimeImmutable('2026-10-12T15:00:00Z'), null, null, new DateTimeImmutable('2026-10-12T15:30:00Z'), true)->end->format('Y-m-d\TH:i:s\Z'));
+    }
 }

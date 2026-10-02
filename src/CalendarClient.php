@@ -51,7 +51,14 @@ interface CalendarClient
 
     public function decline(string $bookingId, ?string $actor = null, ?string $reason = null): Booking;
 
-    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null): Booking;
+    /**
+     * @param DateTimeInterface|null $end null keeps the booking's length
+     * @param bool $hostOverride the HOST moves it: only free time is required, not an offered slot
+     */
+    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false): Booking;
+
+    /** The product's text for the host's calendar copy; a confirmed booking's copy is rewritten. */
+    public function updateDetails(string $bookingId, ?string $title = null, ?string $description = null, ?string $location = null): Booking;
 
     /** @param 'host'|'booker' $proposedBy */
     public function propose(string $bookingId, DateTimeInterface $start, string $proposedBy, ?string $actor = null, ?DateTimeInterface $expiresAt = null): array;
@@ -79,6 +86,13 @@ interface CalendarClient
 
     /** Idempotent: removing a mirror that is not there succeeds. */
     public function removeMirror(string $ref): void;
+
+    /**
+     * Cutover: the mirror becomes a host-created meeting the service owns. `$externalEvents`
+     * ([{provider, account_email, event_id, calendar_id?}]) adopts calendar copies the product
+     * already wrote, so they are updated instead of duplicated.
+     */
+    public function promoteMirror(string $ref, array $externalEvents = []): Booking;
 
     // Views
 
