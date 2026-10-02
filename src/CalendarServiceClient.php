@@ -158,6 +158,18 @@ class CalendarServiceClient implements CalendarClient
         return Booking::fromArray($this->send('GET', 'api/v1/bookings/'.rawurlencode($bookingId)));
     }
 
+    public function mirror(string $ref, array $hostAuthIds, DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        return $this->send('PUT', 'api/v1/mirror/'.rawurlencode($ref), [
+            'hosts' => array_values($hostAuthIds), 'start' => $start->format(DATE_ATOM), 'end' => $end->format(DATE_ATOM),
+        ]);
+    }
+
+    public function removeMirror(string $ref): void
+    {
+        $this->send('DELETE', 'api/v1/mirror/'.rawurlencode($ref));
+    }
+
     public function events(string $hostAuthId, DateTimeInterface $from, DateTimeInterface $to): array
     {
         $data = $this->send('GET', 'api/v1/events', ['host' => $hostAuthId, 'from' => $from->format(DATE_ATOM), 'to' => $to->format(DATE_ATOM)]);
@@ -205,6 +217,11 @@ class CalendarServiceClient implements CalendarClient
     private function bookingAction(string $bookingId, string $action, array $body): Booking
     {
         return Booking::fromArray($this->send('POST', 'api/v1/bookings/'.rawurlencode($bookingId).'/'.$action, array_filter($body, fn ($v) => $v !== null)));
+    }
+
+    public function adoptConnections(array $rows): array
+    {
+        return $this->send('POST', 'api/v1/connections/adopt', ['connections' => array_values($rows)]);
     }
 
     /** @return array<string, mixed> the response's `data` */

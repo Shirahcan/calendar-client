@@ -160,4 +160,36 @@ class ClientTest extends TestCase
         $this->assertNull($b->holdExpiresAt);
         $this->assertSame('case:9', $b->productRef);
     }
+
+    public function test_mirror_and_adopt_hit_their_routes(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['success' => true, 'data' => ['kind' => 'mirrored', 'state' => 'confirmed']]),
+            $this->json(200, ['success' => true, 'data' => null]),
+            $this->json(200, ['success' => true, 'data' => ['adopted' => 1, 'revived' => 0, 'kept' => 0, 'skipped' => 0, 'rows' => [['index' => 0, 'outcome' => 'created']]]]),
+        );
+
+        $this->assertSame('mirrored', $client->mirror('meeting:7', ['auth-1'], new DateTimeImmutable('2026-10-12T14:00:00Z'), new DateTimeImmutable('2026-10-12T15:00:00Z'))['kind']);
+        $client->removeMirror('meeting:7');
+        $this->assertSame(1, $client->adoptConnections([['host_auth_id' => 'auth-1', 'provider' => 'google', 'account_email' => 'a@b.c', 'refresh_token' => 'rt']])['adopted']);
+
+        $this->assertSame('PUT', $this->history[0]['request']->getMethod());
+        $this->assertSame('/api/v1/mirror/meeting%3A7', $this->history[0]['request']->getUri()->getPath());
+        $this->assertSame(['hosts' => ['auth-1'], 'start' => '2026-10-12T14:00:00+00:00', 'end' => '2026-10-12T15:00:00+00:00'], json_decode((string) $this->history[0]['request']->getBody(), true));
+        $this->assertSame('DELETE', $this->history[1]['request']->getMethod());
+        $this->assertSame('/api/v1/connections/adopt', $this->history[2]['request']->getUri()->getPath());
+    }
+
+    public function test_the_fake_keeps_mirrors_and_never_logs_tokens(): void
+    {
+        $fake = new FakeCalendarClient();
+        $fake->mirror('meeting:7', ['auth-1'], new DateTimeImmutable('2026-10-12T14:00:00Z'), new DateTimeImmutable('2026-10-12T15:00:00Z'));
+        $this->assertArrayHasKey('meeting:7', $fake->mirrors);
+        $fake->removeMirror('meeting:7');
+        $this->assertSame([], $fake->mirrors);
+
+        $fake->adoptConnections([['refresh_token' => 'rt-SECRET']]);
+        $this->assertStringNotContainsString('SECRET', json_encode($fake->calls));
+        $this->assertCount(1, $fake->adopted);
+    }
 }

@@ -39,6 +39,12 @@ class FakeCalendarClient implements CalendarClient
 
     public array $hosts = [];
 
+    /** @var array<string, array{hosts: list<string>, start: string, end: string}> ref => live mirror */
+    public array $mirrors = [];
+
+    /** @var list<array> every row handed to adoptConnections */
+    public array $adopted = [];
+
     private ?CalendarServiceException $failNext = null;
 
     private ?DateTimeImmutable $now = null;
@@ -278,6 +284,33 @@ class FakeCalendarClient implements CalendarClient
         $this->log(__FUNCTION__, func_get_args());
 
         return "https://calendar.example.test/oauth/{$provider}/start?host=".rawurlencode($hostAuthId);
+    }
+
+    public function mirror(string $ref, array $hostAuthIds, DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        $this->mirrors[$ref] = ['hosts' => array_values($hostAuthIds), 'start' => $start->format(DATE_ATOM), 'end' => $end->format(DATE_ATOM)];
+
+        return ['product_ref' => $ref, 'kind' => 'mirrored', 'state' => Booking::CONFIRMED] + $this->mirrors[$ref];
+    }
+
+    public function removeMirror(string $ref): void
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        unset($this->mirrors[$ref]);
+    }
+
+    public function adoptConnections(array $rows): array
+    {
+        $this->log(__FUNCTION__, [count($rows).' rows']);   // never the tokens
+        $out = [];
+        foreach (array_values($rows) as $i => $row) {
+            $this->adopted[] = $row;
+            $out[] = ['index' => $i, 'outcome' => 'created'];
+        }
+
+        return ['adopted' => count($out), 'revived' => 0, 'kept' => 0, 'skipped' => 0, 'rows' => $out];
     }
 
     public function connections(string $hostAuthId): array

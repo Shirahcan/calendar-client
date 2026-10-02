@@ -71,6 +71,15 @@ interface CalendarClient
 
     public function booking(string $bookingId): Booking;
 
+    // Mirrors: a product's EXISTING meetings copied in as busy until its cutover (S1).
+    // No availability check, no webhook, no write-back. Keyed by your ref.
+
+    /** @param list<string> $hostAuthIds */
+    public function mirror(string $ref, array $hostAuthIds, DateTimeInterface $start, DateTimeInterface $end): array;
+
+    /** Idempotent: removing a mirror that is not there succeeds. */
+    public function removeMirror(string $ref): void;
+
     // Views
 
     /** Own bookings in full, everything else as anonymous busy. @return array{events: list<array>, stale_external: bool} */
@@ -87,6 +96,13 @@ interface CalendarClient
     public function updateConnection(int $connectionId, string $hostAuthId, ?array $busyCalendars = null, ?string $writeCalendar = null): array;
 
     public function disconnect(int $connectionId, string $hostAuthId): array;
+
+    /**
+     * Hand over existing connections (D6), 1 to 200 rows of {host_auth_id, provider,
+     * account_email, access_token?, refresh_token, token_expires_at?, scopes?}. Loopback only:
+     * the tokens never touch a file. @return array{adopted:int, revived:int, kept:int, skipped:int, rows:list<array{index:int, outcome:string}>}
+     */
+    public function adoptConnections(array $rows): array;
 
     // Holidays (data an admin corrects without a deploy)
 
