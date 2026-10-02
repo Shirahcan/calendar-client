@@ -1,0 +1,163 @@
+<?php
+
+namespace Shirahcan\CalendarClient\Tests;
+
+use DateTimeImmutable;
+use GuzzleHttp\Client as Guzzle;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
+use GuzzleHttp\Psr7\Request;
+use GuzzleHttp\Psr7\Response;
+use PHPUnit\Framework\TestCase;
+use Shirahcan\CalendarClient\Booking;
+use Shirahcan\CalendarClient\CalendarServiceClient;
+use Shirahcan\CalendarClient\Exceptions\CalendarNotFound;
+use Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected;
+use Shirahcan\CalendarClient\Exceptions\CalendarServiceUnavailable;
+use Shirahcan\CalendarClient\Exceptions\HoldExpired;
+use Shirahcan\CalendarClient\Exceptions\SlotUnavailable;
+use Shirahcan\CalendarClient\FakeCalendarClient;
+use Shirahcan\CalendarClient\Slot;
+use Shirahcan\CalendarClient\WebhookSignature;
+
+class ClientTest extends TestCase
+{
+    private array $history = [];
+
+    private function client(Response|\Throwable ...$responses): CalendarServiceClient
+    {
+        $stack = HandlerStack::create(new MockHandler($responses));
+        $stack->push(Middleware::history($this->history));
+
+        return new CalendarServiceClient('http://127.0.0.1:8010', 'test-key', 10, new Guzzle(['handler' => $stack, 'base_uri' => 'http://127.0.0.1:8010/']));
+    }
+
+    private function json(int $status, array $body): Response
+    {
+        return new Response($status, ['Content-Type' => 'application/json'], json_encode($body));
+    }
+
+    private function bookingData(array $over = []): array
+    {
+        return array_merge(['id' => 'b-1', 'state' => 'held', 'start_utc' => '2026-10-12T13:00:00Z', 'end_utc' => '2026-10-12T14:00:00Z',
+            'hold_expires_at' => '2026-10-01T12:15:00Z', 'hosts' => ['auth-1'], 'participants' => [], 'product_ref' => 'case:9', 'booking_type' => 'consult'], $over);
+    }
+
+    public function test_slots_are_typed_and_the_key_is_a_bearer_header(): void
+    {
+        $slots = $this->client($this->json(200, ['success' => true, 'data' => ['slots' => [
+            ['start_utc' => '2026-10-12T13:00:00Z', 'end_utc' => '2026-10-12T14:00:00Z', 'host_ids' => ['auth-1']],
+        ], 'stale_external' => false]]))->slots('consult', new DateTimeImmutable('2026-10-12T00:00Z'), new DateTimeImmutable('2026-10-13T00:00Z'));
+
+        $this->assertInstanceOf(Slot::class, $slots[0]);
+        $this->assertSame(['auth-1'], $slots[0]->hostIds);
+
+        $request = $this->history[0]['request'];
+        $this->assertSame('Bearer test-key', $request->getHeaderLine('Authorization'));
+        $this->assertSame('/api/v1/booking-types/consult/slots', $request->getUri()->getPath());
+        $this->assertStringNotContainsString('test-key', (string) $request->getUri(), 'never a key in a URL');
+    }
+
+    public function test_hold_sends_the_idempotency_key_and_returns_a_booking(): void
+    {
+        $booking = $this->client($this->json(201, ['data' => $this->bookingData()]))
+            ->hold('consult', new DateTimeImmutable('2026-10-12T13:00:00Z'), 'k-1', ['product_ref' => 'case:9']);
+
+        $this->assertSame('b-1', $booking->id);
+        $this->assertTrue($booking->isLive());
+        $body = json_decode((string) $this->history[0]['request']->getBody(), true);
+        $this->assertSame('k-1', $body['idempotency_key']);
+        $this->assertSame('case:9', $body['product_ref']);
+    }
+
+    public function test_service_error_codes_become_typed_exceptions(): void
+    {
+        $cases = [
+            [$this->json(409, ['success' => false, 'message' => 'gone', 'errors' => ['code' => 'slot_unavailable']]), SlotUnavailable::class],
+            [$this->json(410, ['success' => false, 'message' => 'late', 'errors' => ['code' => 'hold_expired']]), HoldExpired::class],
+            [$this->json(404, ['success' => false, 'message' => 'Booking not found.']), CalendarNotFound::class],
+            [$this->json(409, ['success' => false, 'message' => 'no', 'errors' => ['code' => 'invalid_state']]), CalendarRequestRejected::class],
+            [$this->json(503, ['success' => false, 'message' => 'down']), CalendarServiceUnavailable::class],
+        ];
+
+        foreach ($cases as [$response, $class]) {
+            try {
+                $this->client($response)->confirm('b-1');
+                $this->fail("expected {$class}");
+            } catch (\Throwable $e) {
+                $this->assertInstanceOf($class, $e);
+            }
+        }
+    }
+
+    public function test_validation_errors_are_all_kept(): void
+    {
+        try {
+            $this->client($this->json(422, ['success' => false, 'message' => 'invalid', 'errors' => ['a is bad', 'b is bad']]))->upsertSchedule('s', 'auth-1', []);
+            $this->fail('expected a rejection');
+        } catch (CalendarRequestRejected $e) {
+            $this->assertSame(['a is bad', 'b is bad'], $e->errors);
+        }
+    }
+
+    /** ⚠ D13: unreachable means fail closed with a typed outage, never a silent fallback. */
+    public function test_an_unreachable_service_is_an_outage(): void
+    {
+        $this->expectException(CalendarServiceUnavailable::class);
+
+        $this->client(new ConnectException('refused', new Request('GET', 'x')))->booking('b-1');
+    }
+
+    public function test_webhook_signature_round_trip_and_replay_window(): void
+    {
+        $secret = base64_encode(random_bytes(32));
+        $body = '{"event":"booking.confirmed","event_id":"e-1"}';
+        $ts = (string) time();
+        $sig = base64_encode(hash_hmac('sha256', $ts.'.'.$body, base64_decode($secret), true));
+
+        $this->assertTrue(WebhookSignature::verify($body, $sig, $ts, $secret));
+        $this->assertFalse(WebhookSignature::verify($body.' ', $sig, $ts, $secret));
+        $this->assertFalse(WebhookSignature::verify($body, $sig, (string) (time() - 90000), $secret));
+    }
+
+    public function test_the_fake_keeps_the_services_contract(): void
+    {
+        $nine = new DateTimeImmutable('2026-10-12T13:00:00Z');
+        $fake = (new FakeCalendarClient())
+            ->travelTo(new DateTimeImmutable('2026-10-01T12:00:00Z'))
+            ->withSlots('consult', [new Slot($nine, $nine->modify('+1 hour'), ['auth-1'])]);
+
+        $b = $fake->hold('consult', $nine, 'k1');
+        $this->assertSame($b->id, $fake->hold('consult', $nine, 'k1')->id, 'idempotent');
+        $this->assertSame([], $fake->slots('consult', $nine->modify('-1 day'), $nine->modify('+1 day')), 'held slot no longer offered');
+
+        try {
+            $fake->hold('consult', $nine, 'k2');
+            $this->fail('a held slot cannot be held again');
+        } catch (SlotUnavailable) {
+        }
+
+        $fake->travelTo(new DateTimeImmutable('2026-10-01T13:00:00Z'));
+        $this->expectException(HoldExpired::class);
+        $fake->confirm($b->id);
+    }
+
+    public function test_the_fake_can_simulate_an_outage(): void
+    {
+        $fake = (new FakeCalendarClient())->failNext(new CalendarServiceUnavailable('down', 'unreachable'));
+
+        $this->expectException(CalendarServiceUnavailable::class);
+        $fake->slots('consult', new DateTimeImmutable(), new DateTimeImmutable('+1 day'));
+    }
+
+    public function test_booking_value_object_reads_the_service_shape(): void
+    {
+        $b = Booking::fromArray($this->bookingData(['state' => 'cancelled', 'hold_expires_at' => null]));
+
+        $this->assertFalse($b->isLive());
+        $this->assertNull($b->holdExpiresAt);
+        $this->assertSame('case:9', $b->productRef);
+    }
+}

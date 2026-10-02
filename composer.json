@@ -1,0 +1,33 @@
+{
+    "name": "shirahcan/calendar-client",
+    "description": "Thin client for the Shirah estate's calendar-service. Speaks to it over loopback; owns no availability, busy time or calendar tokens of its own.",
+    "type": "library",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^11.0|^12.0",
+        "guzzlehttp/guzzle": "^7.8"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Shirahcan\\CalendarClient\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Shirahcan\\CalendarClient\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Shirahcan\\CalendarClient\\CalendarClientServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
