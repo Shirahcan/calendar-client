@@ -261,6 +261,21 @@ class ClientTest extends TestCase
         $fake->createMeeting(['emp'], new DateTimeImmutable('2026-10-15T13:15:00Z'), new DateTimeImmutable('2026-10-15T13:45:00Z'), 'k3');
     }
 
+    public function test_slots_send_a_chosen_length_only_when_given(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['success' => true, 'data' => ['slots' => []]]),
+            $this->json(200, ['success' => true, 'data' => ['slots' => []]]),
+        );
+        $client->slots('call-1', new DateTimeImmutable('2026-10-12T00:00:00Z'), new DateTimeImmutable('2026-10-13T00:00:00Z'), 60);
+        $client->slots('call-1', new DateTimeImmutable('2026-10-12T00:00:00Z'), new DateTimeImmutable('2026-10-13T00:00:00Z'));
+
+        parse_str($this->history[0]['request']->getUri()->getQuery(), $q0);
+        parse_str($this->history[1]['request']->getUri()->getQuery(), $q1);
+        $this->assertSame('60', $q0['duration']);
+        $this->assertArrayNotHasKey('duration', $q1);
+    }
+
     public function test_the_fake_promotes_a_mirror_into_a_booking(): void
     {
         $fake = new FakeCalendarClient();

@@ -30,8 +30,13 @@ interface CalendarClient
 
     // Slots
 
-    /** @return list<Slot> */
-    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to): array;
+    /**
+     * `$durationMinutes`: a length the booking type offers in its `durations` (null = its
+     * default). Pass the same length as `details['duration']` to hold().
+     *
+     * @return list<Slot>
+     */
+    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null): array;
 
     /** An inline spec: computed, never stored, never bookable. @return list<Slot> */
     public function previewSlots(array $spec, array $rules, DateTimeInterface $from, DateTimeInterface $to, ?string $hostAuthId = null): array;

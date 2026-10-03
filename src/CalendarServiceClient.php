@@ -62,11 +62,11 @@ class CalendarServiceClient implements CalendarClient
         return $this->send('PUT', 'api/v1/booking-types/'.rawurlencode($ref), $definition);
     }
 
-    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to): array
+    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null): array
     {
-        $data = $this->send('GET', 'api/v1/booking-types/'.rawurlencode($bookingTypeRef).'/slots', [
-            'from' => $from->format(DATE_ATOM), 'to' => $to->format(DATE_ATOM),
-        ]);
+        $data = $this->send('GET', 'api/v1/booking-types/'.rawurlencode($bookingTypeRef).'/slots', array_filter([
+            'from' => $from->format(DATE_ATOM), 'to' => $to->format(DATE_ATOM), 'duration' => $durationMinutes,
+        ], fn ($v) => $v !== null));
 
         return array_map(fn (array $s) => Slot::fromArray($s), (array) ($data['slots'] ?? []));
     }

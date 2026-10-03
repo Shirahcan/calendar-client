@@ -106,13 +106,16 @@ class FakeCalendarClient implements CalendarClient
         return $this->bookingTypes[$ref] = ['ref' => $ref] + $definition;
     }
 
-    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to): array
+    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null): array
     {
         $this->log(__FUNCTION__, func_get_args());
 
+        // The fake does not compute: seed slots of each length with withSlots(); a chosen length
+        // returns only the seeded slots of that length.
         return array_values(array_filter(
             $this->slots[$bookingTypeRef] ?? [],
             fn (Slot $s) => $s->start >= $from && $s->start < $to && ! $this->taken($s->start->getTimestamp())
+                && ($durationMinutes === null || $s->end->getTimestamp() - $s->start->getTimestamp() === $durationMinutes * 60)
         ));
     }
 
