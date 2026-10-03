@@ -1,15 +1,20 @@
 {
     "name": "shirahcan/calendar-client",
-    "description": "Thin client for the Shirah estate's calendar-service. Speaks to it over loopback; owns no availability, busy time or calendar tokens of its own.",
+    "description": "Client and product-side kit for the Shirah estate's calendar-service: one way for every product to book, sync and receive events. Owns no availability, busy time or calendar tokens of its own.",
     "type": "library",
     "license": "proprietary",
     "require": {
         "php": "^8.2",
         "illuminate/support": "^11.0|^12.0",
-        "guzzlehttp/guzzle": "^7.8"
+        "guzzlehttp/guzzle": "^7.8",
+        "illuminate/database": "^11.0|^12.0",
+        "illuminate/http": "^11.0|^12.0",
+        "illuminate/routing": "^11.0|^12.0",
+        "illuminate/events": "^11.0|^12.0"
     },
     "require-dev": {
-        "phpunit/phpunit": "^11.0"
+        "phpunit/phpunit": "^11.0",
+        "orchestra/testbench": "^9.0|^10.0"
     },
     "autoload": {
         "psr-4": {

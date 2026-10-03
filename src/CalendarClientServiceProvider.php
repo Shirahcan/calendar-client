@@ -38,5 +38,9 @@ class CalendarClientServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/../config/calendar-client.php' => config_path('calendar-client.php'),
         ], 'calendar-client-config');
+
+        // The product-side kit's tables (K). Each migration is a no-op where the product already
+        // created that table, so adopting the kit changes no schema.
+        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
     }
 }

@@ -40,7 +40,21 @@ Errors: `SlotUnavailable` (pick again), `HoldExpired` (start again), `CalendarNo
 `CalendarRequestRejected` (`->errors` lists every problem), `CalendarServiceUnavailable`
 (fail closed; never fall back to a local engine).
 
-## Webhooks
+## The product-side kit (`Shirahcan\CalendarClient\Laravel`)
+
+Every product wires calendar-service the same way. Do not write your own copy of any of these.
+
+| Piece | Use |
+|---|---|
+| `Seam` | The one seam for booking time: `hold`, `confirm`, `extend`, `release`, `cancel`, `reschedule`, `createMeeting`, `setHosts`, `describe` (text + who receives the calendar copy), `promote`. Fails CLOSED; every failure is a `Refusal`. Extend it to add your product's meaning (which record maps to which ref, who it keeps busy). |
+| `Refusal` | `getMessage()` is safe to show; `status()` is 409 taken / 503 unreachable / 422 rejected; `isRace()`. |
+| `RendersRefusals::register($exceptions)` | One line in `bootstrap/app.php`: a Refusal on an API route answers `{success:false, message}` with its status, never a 500. |
+| `CalendarKit::webhookRoute($uri)` | The signed-event receiver (outside auth middleware). Records each `event_id` once in `calendar_service_events` (the kit's migration; a no-op where the table exists) and fires `Events\CalendarServiceEventReceived` once. Listen with a queued listener. |
+
+⚠ A booking reference passed to `createMeeting` is also its idempotency key, so it must exist
+before your own insert (a uuid, never an auto-increment id).
+
+## Webhooks (without the kit)
 
 Verify with `WebhookSignature::verify($raw, $header['X-Calendar-Signature'], $header['X-Calendar-Timestamp'], $secret)`
 and dedupe on the body's `event_id`.
