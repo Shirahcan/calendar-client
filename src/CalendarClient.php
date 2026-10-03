@@ -60,6 +60,14 @@ interface CalendarClient
     /** The product's text for the host's calendar copy; a confirmed booking's copy is rewritten. */
     public function updateDetails(string $bookingId, ?string $title = null, ?string $description = null, ?string $location = null): Booking;
 
+    /**
+     * Which hosts' external calendars receive the booking's copy: a subset of its hosts, or null
+     * for every host (the default). For text written for ONE person (their own join link).
+     *
+     * @param list<string>|null $hostAuthIds
+     */
+    public function writeTo(string $bookingId, ?array $hostAuthIds): Booking;
+
     /** @param 'host'|'booker' $proposedBy */
     public function propose(string $bookingId, DateTimeInterface $start, string $proposedBy, ?string $actor = null, ?DateTimeInterface $expiresAt = null): array;
 

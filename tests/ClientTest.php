@@ -212,6 +212,26 @@ class ClientTest extends TestCase
         $this->assertSame('/api/v1/mirror/meeting%3A7/promote', $this->history[2]['request']->getUri()->getPath());
     }
 
+    public function test_write_to_sends_the_hosts_or_null_and_the_fake_refuses_a_stranger(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['success' => true, 'data' => $this->bookingData()]),
+            $this->json(200, ['success' => true, 'data' => $this->bookingData()]),
+        );
+        $client->writeTo('b1', ['owner']);
+        $client->writeTo('b1', null);
+        $body = fn (int $i) => json_decode((string) $this->history[$i]['request']->getBody(), true);
+        $this->assertSame(['write_hosts' => ['owner']], $body(0));
+        $this->assertSame(['write_hosts' => null], $body(1));
+
+        $fake = new \Shirahcan\CalendarClient\FakeCalendarClient();
+        $b = $fake->createMeeting(['owner', 'guest'], new DateTimeImmutable('2026-10-15T13:00:00Z'), new DateTimeImmutable('2026-10-15T14:00:00Z'), 'k');
+        $fake->writeTo($b->id, ['owner']);
+        $this->assertSame(['owner'], $fake->bookings[$b->id]['write_hosts']);
+        $this->expectException(\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected::class);
+        $fake->writeTo($b->id, ['stranger']);
+    }
+
     public function test_the_fake_promotes_a_mirror_into_a_booking(): void
     {
         $fake = new FakeCalendarClient();

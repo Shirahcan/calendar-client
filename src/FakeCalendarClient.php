@@ -331,6 +331,18 @@ class FakeCalendarClient implements CalendarClient
         return $this->save($b);
     }
 
+    public function writeTo(string $bookingId, ?array $hostAuthIds): Booking
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $b = $this->find($bookingId);
+        if ($hostAuthIds !== null && array_diff($hostAuthIds, $b['hosts']) !== []) {
+            throw new CalendarRequestRejected('write_hosts names somebody who is not a host of this booking.', 'validation_failed', 422);
+        }
+        $b['write_hosts'] = $hostAuthIds === null ? null : array_values($hostAuthIds);
+
+        return $this->save($b);
+    }
+
     public function adoptConnections(array $rows): array
     {
         $this->log(__FUNCTION__, [count($rows).' rows']);   // never the tokens
