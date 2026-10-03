@@ -17,7 +17,9 @@ use Shirahcan\CalendarClient\Laravel\Events\CalendarServiceEventReceived;
 use Shirahcan\CalendarClient\Laravel\Models\CalendarServiceEvent;
 use Shirahcan\CalendarClient\Laravel\Refusal;
 use Shirahcan\CalendarClient\Laravel\RendersRefusals;
+use Shirahcan\CalendarClient\Laravel\Models\SyncLedgerEntry;
 use Shirahcan\CalendarClient\Laravel\Seam;
+use Shirahcan\CalendarClient\Laravel\SyncLedger;
 
 /** K3 + K4: the product-side kit inside a real Laravel app. */
 class KitTest extends TestCase
@@ -128,6 +130,30 @@ class KitTest extends TestCase
         $row = CalendarServiceEvent::first();
         $this->assertSame(['b-1', 'booking:abc'], [$row->bookingId(), $row->productRef()]);
         Event::assertDispatchedTimes(CalendarServiceEventReceived::class, 1);
+    }
+
+    public function test_the_ledger_sends_once_records_refusals_and_failures_and_never_throws(): void
+    {
+        $sent = 0;
+        $send = function (CalendarClient $c) use (&$sent) {
+            $sent++;
+            $c->upsertHost('emp', 'Emp', 'UTC');
+        };
+
+        $this->assertSame(SyncLedger::SYNCED, SyncLedger::sync('person', 'emp', ['v' => 1], [], $send));
+        $this->assertSame(SyncLedger::UNCHANGED, SyncLedger::sync('person', 'emp', ['v' => 1], ['mixed_durations:30,60'], $send));
+        $this->assertSame(1, $sent);
+        $this->assertSame(['mixed_durations:30,60'], SyncLedgerEntry::for('person', 'emp')->notes, 'notes are kept current without a call');
+        $this->assertTrue(SyncLedger::isCurrent('person', 'emp'));
+
+        $this->fake->failNext(new CalendarServiceUnavailable('down'));
+        $this->assertSame(SyncLedger::FAILED, SyncLedger::sync('person', 'emp', ['v' => 2], [], $send));
+        $this->assertFalse(SyncLedger::isCurrent('person', 'emp'));
+        $this->assertSame(SyncLedger::SYNCED, SyncLedger::sync('person', 'emp', ['v' => 2], [], $send), 'a failure is retried');
+
+        $this->assertSame(SyncLedger::REFUSED, SyncLedger::refuse('person', 'emp', ['mixed_zones:A,B']));
+        $this->assertSame('mixed_zones:A,B', SyncLedgerEntry::for('person', 'emp')->problem);
+        $this->assertSame(SyncLedger::SYNCED, SyncLedger::sync('person', 'emp', ['v' => 2], [], $send), 'a refused subject is sent again once fixed');
     }
 
     public function test_no_secret_refuses_everything(): void
