@@ -144,7 +144,7 @@ abstract class AuthorityObserver
         }
 
         if (! $m->getAttribute($col)) {
-            $linked = $this->link($m, $s, $seam);
+            $linked = $seam->link($s, $m);
             if ($linked === null) {
                 return;
             }
@@ -182,19 +182,6 @@ abstract class AuthorityObserver
         if ($s->enabled() && ($id = $m->getAttribute($s->column()))) {
             $this->quietly(fn () => (new Seam())->cancel($id, 'product', $s->actor().'-deleted'), $id);
         }
-    }
-
-    /** Promote the record's mirror, or create it in the service when there is none. */
-    private function link(Model $m, BookingSubject $s, Seam $seam): ?\Shirahcan\CalendarClient\Booking
-    {
-        $hosts = $s->hosts($m);
-        if ($hosts === []) {
-            return null;
-        }
-        $mirror = $s->mirrorRef($m);
-        $promoted = $mirror === null ? null : $seam->promote($mirror, $s->externalEvents($m));
-
-        return $promoted ?? $seam->createMeeting($hosts, $s->start($m), $s->end($m), $s->ref($m));
     }
 
     /** Ending never blocks on the service: the time only stays busy (safe), and is retried. */

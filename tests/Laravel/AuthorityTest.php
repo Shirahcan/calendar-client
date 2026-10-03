@@ -250,6 +250,23 @@ class AuthorityTest extends TestCase
         $this->assertSame('2026-10-07T17:00:00Z', $this->remote($c)['start_utc']);
     }
 
+    public function test_a_bulk_promote_links_a_mirrored_record_and_creates_an_unmirrored_one(): void
+    {
+        KitCallSubject::$on = false;
+        $mirrored = $this->newCall();
+        $plain = $this->newCall(['starts_at' => '2026-10-08 15:00:00', 'ends_at' => '2026-10-08 15:30:00']);
+        $this->fake->mirror('call-mirror:'.$mirrored->id, ['host', 'guest'], new DateTimeImmutable('2026-10-07T15:00:00Z'), new DateTimeImmutable('2026-10-07T15:30:00Z'));
+        $seam = new \Shirahcan\CalendarClient\Laravel\Seam();
+        $subject = new KitCallSubject();
+
+        $a = $seam->link($subject, $mirrored);
+        $b = $seam->link($subject, $plain);
+
+        $this->assertSame('call-mirror:'.$mirrored->id, $this->fake->bookings[$a->id]['product_ref'], 'the mirror is promoted, not duplicated');
+        $this->assertSame('call:'.$plain->uuid, $this->fake->bookings[$b->id]['idempotency_key']);
+        $this->assertNull($seam->link($subject, new KitCall(['host_id' => '', 'guests' => [], 'status' => 'confirmed'])), 'nobody to keep busy');
+    }
+
     public function test_a_booking_whose_record_never_landed_is_given_back(): void
     {
         $orphan = $this->fake->createMeeting(['host'], new DateTimeImmutable('2026-10-09T10:00:00Z'), new DateTimeImmutable('2026-10-09T10:30:00Z'), 'call:never-saved');

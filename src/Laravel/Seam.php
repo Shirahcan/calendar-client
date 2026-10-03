@@ -3,6 +3,7 @@
 namespace Shirahcan\CalendarClient\Laravel;
 
 use DateTimeInterface;
+use Illuminate\Database\Eloquent\Model;
 use Shirahcan\CalendarClient\Booking;
 use Shirahcan\CalendarClient\CalendarClient;
 use Shirahcan\CalendarClient\Exceptions\CalendarNotFound;
@@ -11,6 +12,7 @@ use Shirahcan\CalendarClient\Exceptions\CalendarServiceException;
 use Shirahcan\CalendarClient\Exceptions\CalendarServiceUnavailable;
 use Shirahcan\CalendarClient\Exceptions\HoldExpired;
 use Shirahcan\CalendarClient\Exceptions\SlotUnavailable;
+use Shirahcan\CalendarClient\Laravel\Bookings\BookingSubject;
 
 /**
  * A product's ONE seam to calendar-service for booking time (K3). Every call either returns the
@@ -158,6 +160,24 @@ class Seam
         } catch (CalendarServiceException $e) {
             throw $this->refusal($e);
         }
+    }
+
+    /**
+     * Hand a record made before the product's cutover to the service: its mirror promoted
+     * (adopting the calendar events the product already wrote), or created when it has none.
+     * Null when it keeps nobody busy. The authority observer links a record on its first change;
+     * a product's bulk promote command links the rest. Throws Refusal (an overlap needs a human).
+     */
+    public function link(BookingSubject $s, Model $m): ?Booking
+    {
+        $hosts = $s->hosts($m);
+        if ($hosts === []) {
+            return null;
+        }
+        $mirror = $s->mirrorRef($m);
+        $promoted = $mirror === null ? null : $this->promote($mirror, $s->externalEvents($m));
+
+        return $promoted ?? $this->createMeeting($hosts, $s->start($m), $s->end($m), $s->ref($m));
     }
 
     /** @template T @param callable(): T $fn @return T */
