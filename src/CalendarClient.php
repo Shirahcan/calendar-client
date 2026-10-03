@@ -68,6 +68,14 @@ interface CalendarClient
      */
     public function writeTo(string $bookingId, ?array $hostAuthIds): Booking;
 
+    /**
+     * Who the booking keeps busy, after somebody joins or leaves. Added hosts are checked against
+     * their busy time unless `$checkBusy` is false. Throws SlotUnavailable when one is busy.
+     *
+     * @param list<string> $hostAuthIds
+     */
+    public function setHosts(string $bookingId, array $hostAuthIds, bool $checkBusy = true, ?string $actor = null): Booking;
+
     /** @param 'host'|'booker' $proposedBy */
     public function propose(string $bookingId, DateTimeInterface $start, string $proposedBy, ?string $actor = null, ?DateTimeInterface $expiresAt = null): array;
 

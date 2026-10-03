@@ -232,6 +232,23 @@ class ClientTest extends TestCase
         $fake->writeTo($b->id, ['stranger']);
     }
 
+    public function test_set_hosts_sends_the_list_and_the_fake_checks_the_people_joining(): void
+    {
+        $client = $this->client($this->json(200, ['success' => true, 'data' => $this->bookingData()]));
+        $client->setHosts('b1', ['emp', 'admin'], false);
+        $this->assertSame('PUT', $this->history[0]['request']->getMethod());
+        $this->assertSame('/api/v1/bookings/b1/hosts', $this->history[0]['request']->getUri()->getPath());
+        $this->assertSame(['hosts' => ['emp', 'admin'], 'check_busy' => false], json_decode((string) $this->history[0]['request']->getBody(), true));
+
+        $fake = new \Shirahcan\CalendarClient\FakeCalendarClient();
+        $b = $fake->createMeeting(['emp'], new DateTimeImmutable('2026-10-15T13:00:00Z'), new DateTimeImmutable('2026-10-15T14:00:00Z'), 'k1');
+        $fake->createMeeting(['admin'], new DateTimeImmutable('2026-10-15T13:30:00Z'), new DateTimeImmutable('2026-10-15T14:30:00Z'), 'k2');
+        $this->assertSame(['emp', 'admin'], $fake->setHosts($b->id, ['emp', 'admin'], false)->hosts);
+        $fake->setHosts($b->id, ['emp']);
+        $this->expectException(\Shirahcan\CalendarClient\Exceptions\SlotUnavailable::class);
+        $fake->setHosts($b->id, ['emp', 'admin']);
+    }
+
     public function test_the_fake_promotes_a_mirror_into_a_booking(): void
     {
         $fake = new FakeCalendarClient();

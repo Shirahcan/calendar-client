@@ -343,6 +343,31 @@ class FakeCalendarClient implements CalendarClient
         return $this->save($b);
     }
 
+    public function setHosts(string $bookingId, array $hostAuthIds, bool $checkBusy = true, ?string $actor = null): Booking
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $b = $this->find($bookingId);
+        if ($hostAuthIds === []) {
+            throw new CalendarRequestRejected('A booking needs at least one host; cancel it instead.', 'validation_failed', 422);
+        }
+        $added = array_values(array_diff($hostAuthIds, $b['hosts']));
+        if ($checkBusy && $added !== []) {
+            $start = (new DateTimeImmutable($b['start_utc']))->getTimestamp();
+            $end = (new DateTimeImmutable($b['end_utc']))->getTimestamp();
+            foreach ($this->bookings as $other) {
+                if ($other['id'] !== $bookingId && in_array($other['state'], [Booking::HELD, Booking::PENDING, Booking::CONFIRMED], true)
+                    && array_intersect($added, $other['hosts']) !== []
+                    && (new DateTimeImmutable($other['start_utc']))->getTimestamp() < $end
+                    && (new DateTimeImmutable($other['end_utc']))->getTimestamp() > $start) {
+                    throw new SlotUnavailable('That time is no longer available.', 'slot_unavailable', 409);
+                }
+            }
+        }
+        $b['hosts'] = array_values(array_unique($hostAuthIds));
+
+        return $this->save($b);
+    }
+
     public function adoptConnections(array $rows): array
     {
         $this->log(__FUNCTION__, [count($rows).' rows']);   // never the tokens

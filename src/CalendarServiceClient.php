@@ -134,6 +134,13 @@ class CalendarServiceClient implements CalendarClient
         ]));
     }
 
+    public function setHosts(string $bookingId, array $hostAuthIds, bool $checkBusy = true, ?string $actor = null): Booking
+    {
+        return Booking::fromArray($this->send('PUT', 'api/v1/bookings/'.rawurlencode($bookingId).'/hosts', array_filter([
+            'hosts' => array_values($hostAuthIds), 'check_busy' => $checkBusy, 'actor' => $actor,
+        ], fn ($v) => $v !== null)));
+    }
+
     public function propose(string $bookingId, DateTimeInterface $start, string $proposedBy, ?string $actor = null, ?DateTimeInterface $expiresAt = null): array
     {
         return $this->send('POST', 'api/v1/bookings/'.rawurlencode($bookingId).'/proposals', array_filter([
