@@ -62,8 +62,9 @@ class SpecBuilderTest extends TestCase
     {
         $rows = [$this->row(['start' => '18:00', 'end' => '00:00']), $this->row(['day' => 2, 'start' => '22:00', 'end' => '02:00'])];
 
-        $this->assertSame([['days' => ['mon'], 'start' => '18:00', 'end' => '24:00']], $this->build($rows)['spec']['weekly'], 'ending at midnight is always fine');
+        $this->assertSame([['days' => ['mon'], 'start' => '18:00', 'end' => '24:00']], $this->build($rows)['spec']['weekly'], 'until midnight, by default');
         $this->assertCount(2, $this->build($rows, ['cross_midnight' => true])['spec']['weekly']);
+        $this->assertArrayNotHasKey('weekly', $this->build($rows, ['midnight_end_of_day' => false])['spec'], 'an engine that reads 00:00 as the same day drops it');
     }
 
     public function test_mixed_zones_are_refused_and_mixed_lengths_and_buffers_noted(): void

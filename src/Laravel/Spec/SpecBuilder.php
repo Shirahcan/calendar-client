@@ -27,7 +27,11 @@ use Carbon\CarbonImmutable;
  *                       counts only inside its period; a period-less weekly row counts nowhere
  *   cross_midnight     true: a window ending at/before its start runs past midnight (Portify);
  *                       false: it is skipped, as an engine that drops it does (MployNow)
- *   empty_date_closes  true: a date whose override rows carry no times is CLOSED (Portify)
+ *   empty_date_closes  true: a date whose override rows carry no times is CLOSED (the date's
+ *                       override rows govern it even when they open nothing)
+ *   midnight_end_of_day true (default): an end of 00:00 means midnight at the END of the day, the
+ *                       person's evident intent; false: it means the same day's 00:00, so the
+ *                       window ends before it starts and is dropped (an engine that reads it so)
  *   min_buffer         floor for the buffer (Portify's engine never goes below 5)
  *   today              for the past cutoff (tests)
  *
@@ -48,7 +52,7 @@ final class SpecBuilder
     {
         $o = $options + [
             'zone' => 'UTC', 'periods_on' => false, 'periods' => [], 'cross_midnight' => false,
-            'empty_date_closes' => false, 'min_buffer' => 0, 'today' => null,
+            'empty_date_closes' => false, 'midnight_end_of_day' => true, 'min_buffer' => 0, 'today' => null,
         ];
         $cutoff = ($o['today'] ?? CarbonImmutable::now('UTC'))->setTimezone('UTC')->subDays(self::PAST_DAYS_KEPT)->format('Y-m-d');
         $rows = array_map(fn ($r) => $r + ['day' => null, 'date' => null, 'to' => null, 'start' => null, 'end' => null,
@@ -100,7 +104,7 @@ final class SpecBuilder
                 continue;
             }
 
-            $window = self::window($r['start'], $r['end'], (bool) $o['cross_midnight']);
+            $window = self::window($r['start'], $r['end'], (bool) $o['cross_midnight'], (bool) $o['midnight_end_of_day']);
 
             if ($r['kind'] === 'weekly') {
                 [$from, $until] = [$r['from'], $r['until']];
@@ -175,15 +179,15 @@ final class SpecBuilder
         return ['start' => "{$r['date']}T{$start}", 'end' => $endDate.'T'.($end === '24:00' ? '00:00' : $end)];
     }
 
-    /** "HH:MM" pair; '00:00' as an end is 24:00. Null when the row has no usable window. */
-    private static function window(?string $start, ?string $end, bool $crossMidnight): ?array
+    /** "HH:MM" pair. Null when the row has no usable window. */
+    private static function window(?string $start, ?string $end, bool $crossMidnight, bool $midnightEndOfDay): ?array
     {
         if ($start === null || $end === null) {
             return null;
         }
         $start = substr($start, 0, 5);
         $end = substr($end, 0, 5);
-        if ($end === '00:00') {
+        if ($end === '00:00' && $midnightEndOfDay) {
             $end = '24:00';
         }
         if (! preg_match('/^\d{2}:\d{2}$/', $start) || ! preg_match('/^\d{2}:\d{2}$/', $end) || $start === $end) {
