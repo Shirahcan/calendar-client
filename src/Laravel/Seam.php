@@ -106,9 +106,11 @@ class Seam
      * reference AND the idempotency key, so it must exist BEFORE the product's own insert
      * (a uuid, never an auto-increment id).
      */
-    public function createMeeting(array $hostAuthIds, DateTimeInterface $start, DateTimeInterface $end, string $ref, array $details = []): Booking
+    public function createMeeting(array $hostAuthIds, DateTimeInterface $start, DateTimeInterface $end, string $ref, array $details = [], ?string $idempotencyKey = null): Booking
     {
-        return $this->call(fn () => $this->client()->createMeeting($hostAuthIds, $start, $end, $ref, ['product_ref' => $ref] + $details));
+        // The product's reference is the idempotency key unless the product books the same record
+        // a second time (reopened after it ended): then a fresh key, the same reference.
+        return $this->call(fn () => $this->client()->createMeeting($hostAuthIds, $start, $end, $idempotencyKey ?? $ref, ['product_ref' => $ref] + $details));
     }
 
     /** People joining or leaving a booked call; `$checkBusy` refuses someone busy then. */

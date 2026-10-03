@@ -51,8 +51,17 @@ Every product wires calendar-service the same way. Do not write your own copy of
 | `RendersRefusals::register($exceptions)` | One line in `bootstrap/app.php`: a Refusal on an API route answers `{success:false, message}` with its status, never a 500. |
 | `CalendarKit::webhookRoute($uri)` | The signed-event receiver (outside auth middleware). Records each `event_id` once in `calendar_service_events` (the kit's migration; a no-op where the table exists) and fires `Events\CalendarServiceEventReceived` once. Listen with a queued listener. |
 
+| `Spec\SpecBuilder::build($rows, $options)` | Your rule rows, normalized, to the schema-1 spec. Every product difference is an option (periods, windows past midnight, an empty override date closing, a buffer floor). |
+| `SyncLedger::sync($type, $id, $payload, $notes, fn (CalendarClient $c) => ...)` | Send a subject only when it changed; `refuse()` records why something was not sent; failures are recorded and retried, never thrown into the save. Table `calendar_service_syncs`. |
+| `Bookings\BookingSubject` (+ `AbstractBookingSubject`) | Your booking model's MEANING: its reference, who it keeps busy, when it occupies time, which fields mean a move / new people / new text, its calendar copy. |
+| `Bookings\AuthorityObserver` | A one-line subclass naming your subject, observed on your model: the service becomes the authority for that model's time on every code path (book first and fail closed, move, end, reopen, delete, people joining, the calendar copy, pre-cutover records linked). Jobs: `PushDetails`, `SyncHosts`, `CancelBooking`, `VerifyLanded`. |
+
 ⚠ A booking reference passed to `createMeeting` is also its idempotency key, so it must exist
 before your own insert (a uuid, never an auto-increment id).
+
+⚠ Laravel stops an '-ing' model event at the first listener that RETURNS non-null. A model hook
+written as an arrow function (or an observer method returning `true`) silently switches the
+authority observer off. Write those hooks with a `void` block body.
 
 ## Webhooks (without the kit)
 
