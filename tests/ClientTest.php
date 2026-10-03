@@ -249,6 +249,18 @@ class ClientTest extends TestCase
         $fake->setHosts($b->id, ['emp', 'admin']);
     }
 
+    public function test_the_fake_meeting_honours_the_idempotency_key_and_refuses_any_overlap_for_the_same_host(): void
+    {
+        $fake = new \Shirahcan\CalendarClient\FakeCalendarClient();
+        $a = $fake->createMeeting(['emp'], new DateTimeImmutable('2026-10-15T13:00:00Z'), new DateTimeImmutable('2026-10-15T14:00:00Z'), 'k1');
+        $this->assertSame($a->id, $fake->createMeeting(['emp'], new DateTimeImmutable('2026-10-15T13:00:00Z'), new DateTimeImmutable('2026-10-15T14:00:00Z'), 'k1')->id);
+
+        // A different host at the very same moment is fine; the same host 15 minutes later is not.
+        $fake->createMeeting(['other'], new DateTimeImmutable('2026-10-15T13:00:00Z'), new DateTimeImmutable('2026-10-15T14:00:00Z'), 'k2');
+        $this->expectException(\Shirahcan\CalendarClient\Exceptions\SlotUnavailable::class);
+        $fake->createMeeting(['emp'], new DateTimeImmutable('2026-10-15T13:15:00Z'), new DateTimeImmutable('2026-10-15T13:45:00Z'), 'k3');
+    }
+
     public function test_the_fake_promotes_a_mirror_into_a_booking(): void
     {
         $fake = new FakeCalendarClient();

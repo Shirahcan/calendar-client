@@ -251,7 +251,15 @@ class FakeCalendarClient implements CalendarClient
     public function createMeeting(array $hostAuthIds, DateTimeInterface $start, DateTimeInterface $end, string $idempotencyKey, array $details = []): Booking
     {
         $this->log(__FUNCTION__, func_get_args());
-        if ($this->taken($start->getTimestamp())) {
+
+        // As the service: the same idempotency key returns the booking it already made...
+        foreach ($this->bookings as $b) {
+            if (($b['idempotency_key'] ?? null) === $idempotencyKey) {
+                return Booking::fromArray($b);
+            }
+        }
+        // ...and a host who is busy at ANY overlapping moment refuses it (not only an identical start).
+        if ($this->overlapsFor($hostAuthIds, $start->getTimestamp(), $end->getTimestamp())) {
             throw new SlotUnavailable('That time is no longer available. Please pick another.', 'slot_unavailable', 409);
         }
         $id = sprintf('%08x-0000-4000-9000-%012x', count($this->bookings) + 1, random_int(0, 0xFFFFFFFFFFFF));
@@ -493,6 +501,27 @@ class FakeCalendarClient implements CalendarClient
     }
 
     /** Is this start already occupied by a live booking (ignoring `$except`)? */
+    /** Is any of these hosts in a live booking overlapping [start, end)? (the service's busy check) */
+    private function overlapsFor(array $hostAuthIds, int $start, int $end, ?string $except = null): bool
+    {
+        foreach ($this->bookings as $id => $b) {
+            if ($id === $except || ! in_array($b['state'], [Booking::HELD, Booking::PENDING, Booking::CONFIRMED], true)) {
+                continue;
+            }
+            if ($b['state'] === Booking::HELD && $b['hold_expires_at'] !== null && new DateTimeImmutable($b['hold_expires_at']) <= $this->now()) {
+                continue;
+            }
+            if (array_intersect($hostAuthIds, $b['hosts'] ?? []) === []) {
+                continue;
+            }
+            if ((new DateTimeImmutable($b['start_utc']))->getTimestamp() < $end && (new DateTimeImmutable($b['end_utc']))->getTimestamp() > $start) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function taken(int $start, ?string $except = null): bool
     {
         foreach ($this->bookings as $id => $b) {
