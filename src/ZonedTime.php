@@ -15,10 +15,27 @@ use DateTimeZone;
  */
 final class ZonedTime
 {
-    /** "8:25 PM WAT" */
+    /** "3:25 PM EDT", "8:25 PM West Africa Standard Time" */
     public static function time(DateTimeInterface $instant, string $zone): string
     {
-        return self::in($instant, $zone)->format('g:i A T');
+        return self::in($instant, $zone)->format('g:i A').' '.self::label($instant, $zone);
+    }
+
+    /**
+     * The zone's NAME at that instant: its abbreviation where ICU has one ("EDT", "MDT", "GMT"),
+     * else its full name ("West Africa Standard Time"). Never a bare offset ("GMT+1", "+04"):
+     * it names no place. The same rule as calendar-ui's zoneLabel, so screens and emails agree.
+     */
+    public static function label(DateTimeInterface $instant, string $zone): string
+    {
+        if (! class_exists(\IntlDateFormatter::class)) {
+            return self::in($instant, $zone)->format('T');
+        }
+        $name = fn (string $pattern): string => (string) (new \IntlDateFormatter('en_US', \IntlDateFormatter::NONE, \IntlDateFormatter::NONE, $zone, null, $pattern))
+            ->format(DateTimeImmutable::createFromInterface($instant));
+        $short = $name('zzz');
+
+        return preg_match('/^(GMT|UTC)[+-]/', $short) ? $name('zzzz') : $short;
     }
 
     /** "Wednesday, October 7, 2026" on the zone's calendar. */
@@ -27,13 +44,13 @@ final class ZonedTime
         return self::in($instant, $zone)->format('l, F j, Y');
     }
 
-    /** "Wednesday, October 7, 2026 at 8:25 PM WAT" */
+    /** "Wednesday, October 7, 2026 at 3:25 PM EDT" */
     public static function dateTime(DateTimeInterface $instant, string $zone): string
     {
         return self::date($instant, $zone).' at '.self::time($instant, $zone);
     }
 
-    /** "8:25 PM - 8:55 PM WAT": the zone once, at the end. */
+    /** "8:25 PM - 8:55 PM West Africa Standard Time": the zone once, at the end. */
     public static function timeRange(DateTimeInterface $start, DateTimeInterface $end, string $zone): string
     {
         return self::in($start, $zone)->format('g:i A').' - '.self::time($end, $zone);
