@@ -44,6 +44,10 @@ booking screen that is the BOOKER's. List "the slots on Sep 29" with
 zone or UTC: that lists a Toronto consultant's evening under the wrong date for a Lagos or Manila
 client, and they book a day they never chose.
 
+**Times in email and calendar files** use the recipient's PROFILE zone and always name it:
+`ZonedTime::dateTime($start, $recipientZone)` gives "Wednesday, October 7, 2026 at 8:25 PM WAT".
+Screens use the viewer's device clock instead (calendar-ui `useDisplayTimezone`), also labelled.
+
 Errors: `SlotUnavailable` (pick again), `HoldExpired` (start again), `CalendarNotFound`,
 `CalendarRequestRejected` (`->errors` lists every problem), `CalendarServiceUnavailable`
 (fail closed; never fall back to a local engine).
