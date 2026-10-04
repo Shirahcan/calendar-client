@@ -44,6 +44,11 @@ booking screen that is the BOOKER's. List "the slots on Sep 29" with
 zone or UTC: that lists a Toronto consultant's evening under the wrong date for a Lagos or Manila
 client, and they book a day they never chose.
 
+**Booking pages, the same rules in every product (`BookingDays`):** `regroup($slotsOrHostDays,
+$bookerZone, $first, $last)` lists slots under the booker's dates (an engine that walks the host's
+days computes `hostWindow($first, $last)` first); `heatmap($groups, 'Y-m')` counts those same days;
+`dateMismatch($slotStartUtc, $dateTheySaw, $bookerZone)` is the hold guard's refusal.
+
 **Times in email and calendar files** use the recipient's PROFILE zone and always name it:
 `ZonedTime::dateTime($start, $recipientZone)` gives "Wednesday, October 7, 2026 at 8:25 PM WAT".
 Screens use the viewer's device clock instead (calendar-ui `useDisplayTimezone`), also labelled.
