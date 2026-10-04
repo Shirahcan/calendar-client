@@ -36,6 +36,14 @@ $hold = $calendar->hold('consultation-30', $slots[0]->start, $idempotencyKey, ['
 $booking = $calendar->confirm($hold->id);   // store $booking->id on your record
 ```
 
+**Days are the viewer's.** Slots are UTC instants; a day only exists in somebody's zone, and on a
+booking screen that is the BOOKER's. List "the slots on Sep 29" with
+`ViewerDay::window('2026-09-29', $bookerZone)` as `$from`/`$to`, count a month with
+`ViewerDay::countByDate($slots, $bookerZone)`, and before holding check
+`ViewerDay::onDate($slot->start, $dateTheyClicked, $bookerZone)`. Never take the day in the host's
+zone or UTC: that lists a Toronto consultant's evening under the wrong date for a Lagos or Manila
+client, and they book a day they never chose.
+
 Errors: `SlotUnavailable` (pick again), `HoldExpired` (start again), `CalendarNotFound`,
 `CalendarRequestRejected` (`->errors` lists every problem), `CalendarServiceUnavailable`
 (fail closed; never fall back to a local engine).
