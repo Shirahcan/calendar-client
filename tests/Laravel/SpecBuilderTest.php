@@ -85,6 +85,26 @@ class SpecBuilderTest extends TestCase
         $this->assertSame(['rules_zone_differs_from_profile:Africa/Lagos!=America/Toronto'], $out['notes']);
     }
 
+    public function test_day_gaps_carry_each_days_own_buffer_only_when_buffers_differ(): void
+    {
+        $rows = [
+            $this->row(['day' => 1, 'buffer' => 15]),
+            $this->row(['day' => 4, 'buffer' => 2]),
+            // 2026-10-15 is a Thursday: its override takes the larger of its own and Thursday's.
+            $this->row(['kind' => 'date', 'date' => '2026-10-15', 'start' => '13:00', 'end' => '15:00', 'buffer' => 0]),
+        ];
+        $out = $this->build($rows, ['day_gaps' => true, 'min_buffer' => 5]);
+
+        $this->assertSame([15, 5], array_column($out['spec']['weekly'], 'gap'));
+        $this->assertSame(5, $out['spec']['overrides'][0]['gap']);
+        $this->assertSame(15, $out['buffer']);
+
+        // Off by default, and silent when every buffer agrees.
+        $this->assertArrayNotHasKey('gap', $this->build($rows)['spec']['weekly'][0]);
+        $same = $this->build([$this->row(['buffer' => 10]), $this->row(['day' => 2, 'buffer' => 10])], ['day_gaps' => true]);
+        $this->assertArrayNotHasKey('gap', $same['spec']['weekly'][0]);
+    }
+
     public function test_no_rows_is_an_empty_spec_in_the_profile_zone(): void
     {
         $this->assertSame(['schema' => 1, 'timezone' => ['zone' => self::ZONE]], $this->build([])['spec']);

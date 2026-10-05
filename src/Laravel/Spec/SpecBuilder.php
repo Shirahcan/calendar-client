@@ -33,6 +33,10 @@ use Carbon\CarbonImmutable;
  *                       person's evident intent; false: it means the same day's 00:00, so the
  *                       window ends before it starts and is dropped (an engine that reads it so)
  *   min_buffer         floor for the buffer (Portify's engine never goes below 5)
+ *   day_gaps           true: when the person's rows carry DIFFERENT buffers, each weekly row and
+ *                       each override date carries its own `gap` (an override date: the largest
+ *                       of its rows and that weekday's weekly rows), so a 5-minute Thursday is not
+ *                       read as the 15-minute Monday. False (default): one buffer for the type
  *   today              for the past cutoff (tests)
  *
  * Returns ['spec' => ?array, 'duration' => int (the most common), 'buffer' => int (the largest),
@@ -53,6 +57,7 @@ final class SpecBuilder
         $o = $options + [
             'zone' => 'UTC', 'periods_on' => false, 'periods' => [], 'cross_midnight' => false,
             'empty_date_closes' => false, 'midnight_end_of_day' => true, 'min_buffer' => 0, 'today' => null,
+            'day_gaps' => false,
         ];
         $cutoff = ($o['today'] ?? CarbonImmutable::now('UTC'))->setTimezone('UTC')->subDays(self::PAST_DAYS_KEPT)->format('Y-m-d');
         $rows = array_map(fn ($r) => $r + ['day' => null, 'date' => null, 'to' => null, 'start' => null, 'end' => null,
@@ -79,6 +84,19 @@ final class SpecBuilder
             $notes[] = 'mixed_buffers:'.implode(',', self::sortedUnique($weeklyBuffers));
         }
         $buffer = max((int) $o['min_buffer'], ...array_map(fn ($r) => (int) $r['buffer'], $timed === [] ? [['buffer' => 0]] : $timed));
+
+        // Per-day gaps only when they say something the type's one buffer cannot.
+        $floored = fn (array $r) => max((int) $r['buffer'], (int) $o['min_buffer']);
+        $gaps = $o['day_gaps'] && count(array_unique(array_map($floored, $timed))) > 1;
+        $weekdayGap = [];
+        if ($gaps) {
+            foreach ($timed as $r) {
+                if ($r['kind'] === 'weekly' && $r['day'] !== null) {
+                    $weekdayGap[(int) $r['day']] = max($weekdayGap[(int) $r['day']] ?? 0, $floored($r));
+                }
+            }
+        }
+        $overrideGap = [];
 
         // Only a row with clock times is read in its zone: a full-day block names a DATE.
         $zones = self::sortedUnique(array_values(array_filter(array_map(fn ($r) => $r['tz'], array_filter($current,
@@ -121,7 +139,7 @@ final class SpecBuilder
                     continue;
                 }
                 $weekly[] = array_filter(['days' => [self::DAYS[(int) $r['day']]], 'start' => $window[0], 'end' => $window[1],
-                    'valid_from' => $from, 'valid_until' => $until], fn ($v) => $v !== null);
+                    'valid_from' => $from, 'valid_until' => $until, 'gap' => $gaps ? $floored($r) : null], fn ($v) => $v !== null);
 
                 continue;
             }
@@ -137,6 +155,10 @@ final class SpecBuilder
                     continue;
                 }
             }
+            if ($gaps && ($window !== null || $o['empty_date_closes'])) {
+                $dow = (int) CarbonImmutable::parse($date)->dayOfWeek;
+                $overrideGap[$date] = max($overrideGap[$date] ?? 0, $weekdayGap[$dow] ?? 0, $floored($r));
+            }
             if ($window !== null) {
                 $overrides[$date][] = $window;
             } elseif ($o['empty_date_closes']) {
@@ -150,7 +172,8 @@ final class SpecBuilder
         }
         if ($overrides !== []) {
             ksort($overrides);
-            $spec['overrides'] = array_map(fn ($date, $w) => ['date' => $date, 'windows' => self::merge($w)], array_keys($overrides), $overrides);
+            $spec['overrides'] = array_map(fn ($date, $w) => ['date' => $date, 'windows' => self::merge($w)]
+                + (isset($overrideGap[$date]) ? ['gap' => $overrideGap[$date]] : []), array_keys($overrides), $overrides);
         }
         if ($blocks !== []) {
             $blocks = array_values(array_unique($blocks, SORT_REGULAR));
