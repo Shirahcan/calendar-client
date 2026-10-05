@@ -141,10 +141,27 @@ interface CalendarClient
 
     // Holidays (data an admin corrects without a deploy)
 
-    /** @return list<array> */
-    public function holidays(string $region, int $year): array;
+    /**
+     * Confirmed holidays; pass include ['proposed', 'rejected'] for the review list.
+     *
+     * @param  list<string>  $include
+     * @return list<array>
+     */
+    public function holidays(string $region, int $year, array $include = []): array;
 
-    public function putHoliday(string $region, string $date, string $name): array;
+    /** Add, rename or confirm (a proposed date put by an admin is confirmed). $by names who. */
+    public function putHoliday(string $region, string $date, string $name, ?string $by = null): array;
 
-    public function removeHoliday(string $region, string $date): array;
+    public function removeHoliday(string $region, string $date, ?string $by = null): array;
+
+    /**
+     * A researched date waiting for a person. Never overwrites a decided holiday.
+     *
+     * @param  list<array{title?:string,url?:string,domain?:string}>  $sources
+     */
+    public function proposeHoliday(string $region, string $date, string $name, bool $estimated = false, array $sources = [], string $source = 'research'): array;
+
+    public function confirmHoliday(string $region, string $date, ?string $by = null): array;
+
+    public function rejectHoliday(string $region, string $date, ?string $by = null): array;
 }

@@ -287,4 +287,36 @@ class ClientTest extends TestCase
         $this->assertSame([], $fake->mirrors);
         $this->assertSame('2026-10-12T15:30:00Z', $fake->reschedule($b->id, new DateTimeImmutable('2026-10-12T15:00:00Z'), null, null, new DateTimeImmutable('2026-10-12T15:30:00Z'), true)->end->format('Y-m-d\TH:i:s\Z'));
     }
+
+    public function test_holiday_review_calls_hit_their_routes(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['data' => [['date' => '2027-04-13', 'status' => 'proposed']]]),
+            $this->json(200, ['data' => ['status' => 'proposed']]),
+            $this->json(200, ['data' => ['status' => 'confirmed']]),
+        );
+
+        $client->holidays('NG', 2027, ['proposed']);
+        $client->proposeHoliday('NG', '2027-04-13', 'Eid al-Fitr', true, [['url' => 'https://x.test']], 'porter');
+        $client->confirmHoliday('NG', '2027-04-13', 'admin-1');
+
+        $this->assertSame('year=2027&include=proposed', $this->history[0]['request']->getUri()->getQuery());
+        $this->assertSame('/api/v1/holidays/NG/2027-04-13/propose', $this->history[1]['request']->getUri()->getPath());
+        $this->assertTrue(json_decode((string) $this->history[1]['request']->getBody(), true)['estimated']);
+        $this->assertSame(['by' => 'admin-1'], json_decode((string) $this->history[2]['request']->getBody(), true));
+    }
+
+    public function test_the_fake_keeps_a_rejected_holiday_rejected(): void
+    {
+        $fake = new FakeCalendarClient();
+        $fake->proposeHoliday('GH', '2027-03-09', 'Eid ul-Fitr');
+        $fake->rejectHoliday('GH', '2027-03-09');
+
+        $this->assertSame('rejected', $fake->proposeHoliday('GH', '2027-03-10', 'Eid ul-Fitr')['status']);
+        $this->assertSame([], $fake->holidays('GH', 2027));
+        $this->assertCount(1, $fake->holidays('GH', 2027, ['proposed', 'rejected']));
+
+        $this->expectException(CalendarRequestRejected::class);
+        $fake->confirmHoliday('GH', '2027-03-09');
+    }
 }

@@ -228,19 +228,43 @@ class CalendarServiceClient implements CalendarClient
         return $this->send('DELETE', "api/v1/connections/{$connectionId}", ['host' => $hostAuthId]);
     }
 
-    public function holidays(string $region, int $year): array
+    public function holidays(string $region, int $year, array $include = []): array
     {
-        return array_values($this->send('GET', 'api/v1/holidays/'.rawurlencode($region), ['year' => $year]));
+        $query = ['year' => $year] + ($include === [] ? [] : ['include' => implode(',', $include)]);
+
+        return array_values($this->send('GET', 'api/v1/holidays/'.rawurlencode($region), $query));
     }
 
-    public function putHoliday(string $region, string $date, string $name): array
+    public function putHoliday(string $region, string $date, string $name, ?string $by = null): array
     {
-        return $this->send('PUT', 'api/v1/holidays/'.rawurlencode($region).'/'.rawurlencode($date), ['name' => $name]);
+        return $this->send('PUT', $this->holidayPath($region, $date), array_filter(['name' => $name, 'by' => $by], fn ($v) => $v !== null));
     }
 
-    public function removeHoliday(string $region, string $date): array
+    public function removeHoliday(string $region, string $date, ?string $by = null): array
     {
-        return $this->send('DELETE', 'api/v1/holidays/'.rawurlencode($region).'/'.rawurlencode($date));
+        return $this->send('DELETE', $this->holidayPath($region, $date), array_filter(['by' => $by], fn ($v) => $v !== null));
+    }
+
+    public function proposeHoliday(string $region, string $date, string $name, bool $estimated = false, array $sources = [], string $source = 'research'): array
+    {
+        return $this->send('POST', $this->holidayPath($region, $date).'/propose', [
+            'name' => $name, 'estimated' => $estimated, 'sources' => array_values($sources), 'source' => $source,
+        ]);
+    }
+
+    public function confirmHoliday(string $region, string $date, ?string $by = null): array
+    {
+        return $this->send('POST', $this->holidayPath($region, $date).'/confirm', array_filter(['by' => $by], fn ($v) => $v !== null));
+    }
+
+    public function rejectHoliday(string $region, string $date, ?string $by = null): array
+    {
+        return $this->send('POST', $this->holidayPath($region, $date).'/reject', array_filter(['by' => $by], fn ($v) => $v !== null));
+    }
+
+    private function holidayPath(string $region, string $date): string
+    {
+        return 'api/v1/holidays/'.rawurlencode($region).'/'.rawurlencode($date);
     }
 
     private function bookingAction(string $bookingId, string $action, array $body): Booking

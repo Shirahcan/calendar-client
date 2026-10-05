@@ -412,25 +412,82 @@ class FakeCalendarClient implements CalendarClient
         return ['id' => $connectionId, 'status' => 'revoked'];
     }
 
-    public function holidays(string $region, int $year): array
+    /** @var array<string, array> "REGION|Y-m-d" => holiday row, the service's shape */
+    private array $holidayRows = [];
+
+    public function holidays(string $region, int $year, array $include = []): array
     {
         $this->log(__FUNCTION__, func_get_args());
 
-        return [];
+        $statuses = array_merge(['confirmed'], $include);
+        $rows = array_filter($this->holidayRows, fn ($h) => $h['region'] === $region
+            && str_starts_with($h['date'], (string) $year)
+            && in_array($h['status'], $statuses, true));
+        usort($rows, fn ($a, $b) => strcmp($a['date'], $b['date']));
+
+        return array_values($rows);
     }
 
-    public function putHoliday(string $region, string $date, string $name): array
+    public function putHoliday(string $region, string $date, string $name, ?string $by = null): array
     {
         $this->log(__FUNCTION__, func_get_args());
 
-        return ['region' => $region, 'date' => $date, 'name' => $name, 'source' => 'manual', 'observed' => true];
+        return $this->holidayRows["{$region}|{$date}"] = $this->holidayRow($region, $date, $name, 'manual', true, 'confirmed') + ['decided_by' => $by];
     }
 
-    public function removeHoliday(string $region, string $date): array
+    public function removeHoliday(string $region, string $date, ?string $by = null): array
     {
         $this->log(__FUNCTION__, func_get_args());
 
-        return ['region' => $region, 'date' => $date, 'observed' => false];
+        $name = $this->holidayRows["{$region}|{$date}"]['name'] ?? 'Removed';
+
+        return $this->holidayRows["{$region}|{$date}"] = $this->holidayRow($region, $date, $name, 'manual', false, 'confirmed') + ['decided_by' => $by];
+    }
+
+    public function proposeHoliday(string $region, string $date, string $name, bool $estimated = false, array $sources = [], string $source = 'research'): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        foreach ($this->holidayRows as $row) {
+            $sameDay = $row['region'] === $region && $row['date'] === $date;
+            $sameYearName = $row['region'] === $region && substr($row['date'], 0, 4) === substr($date, 0, 4) && $row['name'] === $name;
+            if (($sameDay || $sameYearName) && $row['status'] !== 'proposed') {
+                return $row;
+            }
+        }
+
+        return $this->holidayRows["{$region}|{$date}"] = $this->holidayRow($region, $date, $name, $source, true, 'proposed', $estimated, $sources);
+    }
+
+    public function confirmHoliday(string $region, string $date, ?string $by = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        return $this->decideHoliday($region, $date, 'confirmed', $by);
+    }
+
+    public function rejectHoliday(string $region, string $date, ?string $by = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        return $this->decideHoliday($region, $date, 'rejected', $by);
+    }
+
+    private function decideHoliday(string $region, string $date, string $status, ?string $by): array
+    {
+        $key = "{$region}|{$date}";
+        if (($this->holidayRows[$key]['status'] ?? null) !== 'proposed') {
+            throw new CalendarRequestRejected('Only a proposed holiday can be confirmed or rejected.', 'not_proposed', 409);
+        }
+        $this->holidayRows[$key]['status'] = $status;
+        $this->holidayRows[$key]['decided_by'] = $by;
+
+        return $this->holidayRows[$key];
+    }
+
+    private function holidayRow(string $region, string $date, string $name, string $source, bool $observed, string $status, bool $estimated = false, array $sources = []): array
+    {
+        return compact('region', 'date', 'name', 'source', 'observed', 'status', 'estimated', 'sources') + ['decided_by' => null];
     }
 
     /** @return list<array> the arguments of every call to $method */
