@@ -48,6 +48,17 @@ class SpecBuilderTest extends TestCase
         $this->assertSame(['date' => '2026-10-13', 'windows' => []], $this->build($rows, ['empty_date_closes' => true])['spec']['overrides'][1]);
     }
 
+    public function test_holidays_are_observed_only_when_asked_and_past_worked_dates_drop(): void
+    {
+        $this->assertArrayNotHasKey('holidays', $this->build([$this->row([])])['spec']);
+
+        $out = $this->build([$this->row([])], ['holidays' => ['region' => 'CA', 'work' => ['2026-10-12', '2026-07-01', '2026-10-12']]]);
+        $this->assertSame(['observe' => true, 'region' => 'CA', 'work' => ['2026-10-12']], $out['spec']['holidays']);
+
+        $none = $this->build([$this->row([])], ['holidays' => ['region' => 'CA', 'work' => []]]);
+        $this->assertSame(['observe' => true, 'region' => 'CA'], $none['spec']['holidays']);
+    }
+
     public function test_blocks_keep_their_span_or_their_clock_times(): void
     {
         $out = $this->build([

@@ -37,6 +37,9 @@ use Carbon\CarbonImmutable;
  *                       each override date carries its own `gap` (an override date: the largest
  *                       of its rows and that weekday's weekly rows), so a 5-minute Thursday is not
  *                       read as the 15-minute Monday. False (default): one buffer for the type
+ *   holidays           null (default): the spec observes no holidays. ['region' => 'CA' | 'CA-ON',
+ *                       'work' => list<'Y-m-d'>]: the host observes the region's public holidays,
+ *                       which the SERVICE holds, except the dates in `work` they chose to work
  *   today              for the past cutoff (tests)
  *
  * Returns ['spec' => ?array, 'duration' => int (the most common), 'buffer' => int (the largest),
@@ -57,7 +60,7 @@ final class SpecBuilder
         $o = $options + [
             'zone' => 'UTC', 'periods_on' => false, 'periods' => [], 'cross_midnight' => false,
             'empty_date_closes' => false, 'midnight_end_of_day' => true, 'min_buffer' => 0, 'today' => null,
-            'day_gaps' => false,
+            'day_gaps' => false, 'holidays' => null,
         ];
         $cutoff = ($o['today'] ?? CarbonImmutable::now('UTC'))->setTimezone('UTC')->subDays(self::PAST_DAYS_KEPT)->format('Y-m-d');
         $rows = array_map(fn ($r) => $r + ['day' => null, 'date' => null, 'to' => null, 'start' => null, 'end' => null,
@@ -179,6 +182,11 @@ final class SpecBuilder
             $blocks = array_values(array_unique($blocks, SORT_REGULAR));
             usort($blocks, fn ($a, $b) => strcmp(($a['from'] ?? $a['start']).json_encode($a), ($b['from'] ?? $b['start']).json_encode($b)));
             $spec['blocks'] = $blocks;
+        }
+        if (is_array($o['holidays']) && ! empty($o['holidays']['region'])) {
+            $work = array_values(array_unique(array_filter(array_map('strval', $o['holidays']['work'] ?? []), fn ($d) => $d >= $cutoff)));
+            sort($work);
+            $spec['holidays'] = ['observe' => true, 'region' => (string) $o['holidays']['region']] + ($work === [] ? [] : ['work' => $work]);
         }
 
         return ['spec' => $spec, 'duration' => $duration, 'buffer' => $buffer, 'problems' => [], 'notes' => $notes];
