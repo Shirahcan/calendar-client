@@ -24,6 +24,19 @@ return [
     'callback_secret' => env('CALENDAR_SERVICE_CALLBACK_SECRET', ''),
 
     /*
+    | The scratchpad and meeting notes kit (Laravel\Notes). Stored in THIS product's database.
+    | `access`: the product's ScratchpadAccess (who may use a meeting's pad, and as whom).
+    | `targets`: where the pad can be filed, in the order offered ("save to case" is the
+    | product's own wording). `note_model`: the product's model for meeting_notes, if it has one.
+    */
+    'scratchpad' => [
+        'access' => null,
+        'targets' => [\Shirahcan\CalendarClient\Laravel\Notes\MeetingNotesTarget::class],
+        'note_model' => \Shirahcan\CalendarClient\Laravel\Notes\MeetingNote::class,
+        'max_chars' => 60000,
+    ],
+
+    /*
     |--------------------------------------------------------------------------
     | Deliberately absent
     |--------------------------------------------------------------------------
