@@ -93,6 +93,13 @@ class FakeCalendarClient implements CalendarClient
         return $this->schedules[$ref] ?? throw new CalendarNotFound('Schedule not found.', null, 404);
     }
 
+    public function schedules(array $refs): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        return array_intersect_key($this->schedules, array_flip($refs));
+    }
+
     public function deleteSchedule(string $ref): void
     {
         $this->log(__FUNCTION__, func_get_args());

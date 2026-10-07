@@ -325,6 +325,15 @@ class ClientTest extends TestCase
         $this->assertTrue($fake->setReminderPolicy(null)['is_default']);
     }
 
+    public function test_several_schedules_are_read_at_once(): void
+    {
+        $client = $this->client($this->json(200, ['data' => [['ref' => 'a', 'host' => 'h', 'spec' => ['schema' => 1]]]]));
+
+        $this->assertSame(['a'], array_keys($client->schedules(['a', 'b', 'a'])));
+        $this->assertSame('refs%5B0%5D=a&refs%5B1%5D=b', $this->history[0]['request']->getUri()->getQuery());
+        $this->assertSame([], $client->schedules([]));
+    }
+
     public function test_the_fake_keeps_a_rejected_holiday_rejected(): void
     {
         $fake = new FakeCalendarClient();

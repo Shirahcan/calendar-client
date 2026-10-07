@@ -48,6 +48,21 @@ class CalendarServiceClient implements CalendarClient
         return $this->send('GET', 'api/v1/schedules/'.rawurlencode($ref));
     }
 
+    public function schedules(array $refs): array
+    {
+        if ($refs === []) {
+            return [];
+        }
+        $out = [];
+        foreach (array_chunk(array_values(array_unique($refs)), 500) as $chunk) {
+            foreach ($this->send('GET', 'api/v1/schedules', ['refs' => $chunk]) as $row) {
+                $out[(string) $row['ref']] = $row;
+            }
+        }
+
+        return $out;
+    }
+
     public function deleteSchedule(string $ref): void
     {
         try {

@@ -23,6 +23,14 @@ interface CalendarClient
 
     public function schedule(string $ref): array;
 
+    /**
+     * Several of this product's schedules at once, keyed by ref; an unknown ref is absent.
+     *
+     * @param  list<string>  $refs
+     * @return array<string, array{ref: string, host: ?string, spec: array}>
+     */
+    public function schedules(array $refs): array;
+
     public function deleteSchedule(string $ref): void;
 
     /** @param array $definition duration, step, buffers, notice, horizon, daily_cap, approval, hold_ttl, hosts{mode, members[{host, schedule}]} */
