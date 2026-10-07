@@ -240,12 +240,11 @@ class CalendarServiceClient implements CalendarClient
         return $this->send('GET', 'api/v1/reminders/policy');
     }
 
-    public function setReminderPolicy(array $offsetsMinutes, ?string $by = null): array
+    public function setReminderPolicy(?array $offsetsMinutes, ?string $by = null): array
     {
-        return $this->send('PUT', 'api/v1/reminders/policy', array_filter([
-            'offsets_minutes' => array_values(array_map('intval', $offsetsMinutes)),
-            'updated_by' => $by,
-        ], fn ($v) => $v !== null));
+        return $this->send('PUT', 'api/v1/reminders/policy', [
+            'offsets_minutes' => $offsetsMinutes === null ? null : array_values(array_map('intval', $offsetsMinutes)),
+        ] + ($by !== null ? ['updated_by' => $by] : []));
     }
 
     public function putHoliday(string $region, string $date, string $name, ?string $by = null): array

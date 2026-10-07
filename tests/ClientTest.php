@@ -322,6 +322,7 @@ class ClientTest extends TestCase
         $fake = new FakeCalendarClient();
         $this->assertTrue($fake->reminderPolicy()['is_default']);
         $this->assertSame([60, 10], $fake->setReminderPolicy([10, 60, 60, 0])['offsets_minutes']);
+        $this->assertTrue($fake->setReminderPolicy(null)['is_default']);
     }
 
     public function test_the_fake_keeps_a_rejected_holiday_rejected(): void

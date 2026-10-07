@@ -438,9 +438,14 @@ class FakeCalendarClient implements CalendarClient
         return $this->reminderPayload();
     }
 
-    public function setReminderPolicy(array $offsetsMinutes, ?string $by = null): array
+    public function setReminderPolicy(?array $offsetsMinutes, ?string $by = null): array
     {
         $this->log(__FUNCTION__, func_get_args());
+        if ($offsetsMinutes === null) {
+            $this->reminderOffsets = null;
+
+            return $this->reminderPayload();
+        }
         $clean = array_values(array_unique(array_filter(array_map('intval', $offsetsMinutes), fn (int $m) => $m >= 1 && $m <= 10080)));
         rsort($clean);
         $this->reminderOffsets = $clean;

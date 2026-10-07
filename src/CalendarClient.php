@@ -171,10 +171,11 @@ interface CalendarClient
     public function reminderPolicy(): array;
 
     /**
-     * Minutes before the start, e.g. [1440, 60, 30]; [] = none. $by names who changed it.
+     * Minutes before the start, e.g. [1440, 60, 30]; [] = none; null = the service default.
+     * $by names who changed it.
      *
-     * @param  list<int>  $offsetsMinutes
+     * @param  list<int>|null  $offsetsMinutes
      * @return array{offsets_minutes: list<int>, is_default: bool, default_offsets_minutes: list<int>}
      */
-    public function setReminderPolicy(array $offsetsMinutes, ?string $by = null): array;
+    public function setReminderPolicy(?array $offsetsMinutes, ?string $by = null): array;
 }
