@@ -306,6 +306,24 @@ class ClientTest extends TestCase
         $this->assertSame(['by' => 'admin-1'], json_decode((string) $this->history[2]['request']->getBody(), true));
     }
 
+    public function test_the_reminder_policy_is_read_and_set_on_the_service(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['data' => ['offsets_minutes' => [1440, 60, 30], 'is_default' => true]]),
+            $this->json(200, ['data' => ['offsets_minutes' => [120, 15], 'is_default' => false]]),
+        );
+
+        $this->assertSame([1440, 60, 30], $client->reminderPolicy()['offsets_minutes']);
+        $this->assertSame([120, 15], $client->setReminderPolicy([120, 15], 'admin-1')['offsets_minutes']);
+        $this->assertSame('PUT', $this->history[1]['request']->getMethod());
+        $this->assertSame('/api/v1/reminders/policy', $this->history[1]['request']->getUri()->getPath());
+        $this->assertSame(['offsets_minutes' => [120, 15], 'updated_by' => 'admin-1'], json_decode((string) $this->history[1]['request']->getBody(), true));
+
+        $fake = new FakeCalendarClient();
+        $this->assertTrue($fake->reminderPolicy()['is_default']);
+        $this->assertSame([60, 10], $fake->setReminderPolicy([10, 60, 60, 0])['offsets_minutes']);
+    }
+
     public function test_the_fake_keeps_a_rejected_holiday_rejected(): void
     {
         $fake = new FakeCalendarClient();

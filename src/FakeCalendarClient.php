@@ -428,6 +428,35 @@ class FakeCalendarClient implements CalendarClient
         return array_values($rows);
     }
 
+    /** @var list<int>|null null = the service default */
+    public ?array $reminderOffsets = null;
+
+    public function reminderPolicy(): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        return $this->reminderPayload();
+    }
+
+    public function setReminderPolicy(array $offsetsMinutes, ?string $by = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $clean = array_values(array_unique(array_filter(array_map('intval', $offsetsMinutes), fn (int $m) => $m >= 1 && $m <= 10080)));
+        rsort($clean);
+        $this->reminderOffsets = $clean;
+
+        return $this->reminderPayload();
+    }
+
+    private function reminderPayload(): array
+    {
+        return [
+            'offsets_minutes' => $this->reminderOffsets ?? [1440, 60, 30],
+            'is_default' => $this->reminderOffsets === null,
+            'default_offsets_minutes' => [1440, 60, 30],
+        ];
+    }
+
     public function putHoliday(string $region, string $date, string $name, ?string $by = null): array
     {
         $this->log(__FUNCTION__, func_get_args());

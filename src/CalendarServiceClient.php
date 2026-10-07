@@ -235,6 +235,19 @@ class CalendarServiceClient implements CalendarClient
         return array_values($this->send('GET', 'api/v1/holidays/'.rawurlencode($region), $query));
     }
 
+    public function reminderPolicy(): array
+    {
+        return $this->send('GET', 'api/v1/reminders/policy');
+    }
+
+    public function setReminderPolicy(array $offsetsMinutes, ?string $by = null): array
+    {
+        return $this->send('PUT', 'api/v1/reminders/policy', array_filter([
+            'offsets_minutes' => array_values(array_map('intval', $offsetsMinutes)),
+            'updated_by' => $by,
+        ], fn ($v) => $v !== null));
+    }
+
     public function putHoliday(string $region, string $date, string $name, ?string $by = null): array
     {
         return $this->send('PUT', $this->holidayPath($region, $date), array_filter(['name' => $name, 'by' => $by], fn ($v) => $v !== null));

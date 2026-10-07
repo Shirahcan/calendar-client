@@ -164,4 +164,17 @@ interface CalendarClient
     public function confirmHoliday(string $region, string $date, ?string $by = null): array;
 
     public function rejectHoliday(string $region, string $date, ?string $by = null): array;
+
+    // Booking reminders (when the service says `booking.reminder_due`; the product sends them)
+
+    /** @return array{offsets_minutes: list<int>, is_default: bool, default_offsets_minutes: list<int>} */
+    public function reminderPolicy(): array;
+
+    /**
+     * Minutes before the start, e.g. [1440, 60, 30]; [] = none. $by names who changed it.
+     *
+     * @param  list<int>  $offsetsMinutes
+     * @return array{offsets_minutes: list<int>, is_default: bool, default_offsets_minutes: list<int>}
+     */
+    public function setReminderPolicy(array $offsetsMinutes, ?string $by = null): array;
 }
