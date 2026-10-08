@@ -209,6 +209,9 @@ class ClientTest extends TestCase
         $this->assertSame('zoom', $fake->setHostPreferences('auth-1', ['call_tool' => 'zoom'])['call_tool']);
         $this->assertSame('zoom', $fake->callLink($booking->id)['tool']);
         $this->assertSame(['call_tools' => ['zoom', 'google_meet'], 'calendar_providers' => ['google', 'microsoft']], $fake->schedulingPolicy()['offered']);
+
+        $fake->disconnectCallTool(1, 'auth-1');
+        $this->assertNull($fake->hostPreferences('auth-1')['call_tool'], 'the preference falls away with the tool');
     }
 
     public function test_the_fake_makes_a_call_link_once_and_only_for_a_connected_tool(): void

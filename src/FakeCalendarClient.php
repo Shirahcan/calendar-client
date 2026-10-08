@@ -427,6 +427,11 @@ class FakeCalendarClient implements CalendarClient
     {
         $this->log(__FUNCTION__, func_get_args());
         $this->callTools[$hostAuthId] = array_values(array_filter($this->callTools[$hostAuthId] ?? [], fn ($t) => ($t['id'] ?? null) !== $callToolId));
+        // As the service: a preference for a tool that is no longer connected falls away.
+        $zoomLeft = array_filter($this->callTools[$hostAuthId], fn ($t) => ($t['tool'] ?? null) === 'zoom' && ($t['status'] ?? 'active') === 'active') !== [];
+        if (! $zoomLeft && ($this->hostPreferences[$hostAuthId]['call_tool'] ?? null) === 'zoom') {
+            $this->hostPreferences[$hostAuthId]['call_tool'] = null;
+        }
 
         return ['id' => $callToolId, 'status' => 'revoked'];
     }
