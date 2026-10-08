@@ -181,7 +181,9 @@ class FakeCalendarClient implements CalendarClient
     public function confirm(string $bookingId, ?string $actor = null): Booking
     {
         $this->live($bookingId, Booking::HELD);
-        $needsApproval = (bool) ($this->bookingTypes[$this->bookings[$bookingId]['booking_type']]['approval']['required'] ?? false);
+        $needsApproval = (bool) ($this->bookingTypes[$this->bookings[$bookingId]['booking_type']]['approval']['required'] ?? false)
+            // As the service: any host who approves their own bookings makes it pending too.
+            || array_filter((array) ($this->bookings[$bookingId]['hosts'] ?? []), fn ($h) => (bool) ($this->hostPreferences[$h]['requires_approval'] ?? false)) !== [];
 
         return $this->move($bookingId, [Booking::HELD], $needsApproval ? Booking::PENDING : Booking::CONFIRMED);
     }

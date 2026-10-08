@@ -214,6 +214,15 @@ class ClientTest extends TestCase
         $this->assertNull($fake->hostPreferences('auth-1')['call_tool'], 'the preference falls away with the tool');
     }
 
+    public function test_a_host_who_approves_their_own_bookings_gets_them_pending_in_the_fake(): void
+    {
+        $nine = new DateTimeImmutable('2026-10-12T13:00:00Z');
+        $fake = (new FakeCalendarClient())->withSlots('consult', [new Slot($nine, $nine->modify('+1 hour'), ['auth-1'])]);
+        $fake->setHostPreferences('auth-1', ['requires_approval' => true]);
+
+        $this->assertSame(\Shirahcan\CalendarClient\Booking::PENDING, $fake->confirm($fake->hold('consult', $nine, 'k1')->id)->state);
+    }
+
     public function test_the_fake_makes_a_call_link_once_and_only_for_a_connected_tool(): void
     {
         $fake = new FakeCalendarClient();
