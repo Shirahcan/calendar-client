@@ -211,11 +211,21 @@ interface CalendarClient
 
     // Holiday places and rules (data, shared by every product)
 
-    /** @return list<array{code:string, name:string, active:bool}> */
+    /**
+     * The places with public holidays. `research` lists the holidays no rule can give and the
+     * sources a researcher may read for them (null = nothing to research).
+     *
+     * @return list<array{code:string, name:string, active:bool, research:?array{holidays:list<string>, domains:list<string>}}>
+     */
     public function holidayRegions(): array;
 
-    /** @return list<array{code:string, name:string, active:bool}> */
-    public function putHolidayRegion(string $code, string $name, bool $active = true, ?string $by = null): array;
+    /**
+     * Add or rename a place. $research: omit (false) to keep what it has, null to clear it.
+     *
+     * @param  array{holidays:list<string>, domains:list<string>}|null|false  $research
+     * @return list<array{code:string, name:string, active:bool, research:?array}>
+     */
+    public function putHolidayRegion(string $code, string $name, bool $active = true, ?string $by = null, array|null|false $research = false): array;
 
     /** @return list<array{id:int, name:string, kind:string, params:array, active:bool, next:?string}> */
     public function holidayDefinitions(string $region): array;

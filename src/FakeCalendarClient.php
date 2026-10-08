@@ -529,13 +529,13 @@ class FakeCalendarClient implements CalendarClient
         return $out;
     }
 
-    /** @var array<string, array{code:string,name:string,active:bool}> */
+    /** @var array<string, array{code:string,name:string,active:bool,research:?array}> */
     public array $holidayRegionRows = [
-        'CA' => ['code' => 'CA', 'name' => 'Canada', 'active' => true],
-        'GB' => ['code' => 'GB', 'name' => 'United Kingdom', 'active' => true],
-        'GH' => ['code' => 'GH', 'name' => 'Ghana', 'active' => true],
-        'NG' => ['code' => 'NG', 'name' => 'Nigeria', 'active' => true],
-        'US' => ['code' => 'US', 'name' => 'United States', 'active' => true],
+        'CA' => ['code' => 'CA', 'name' => 'Canada', 'active' => true, 'research' => null],
+        'GB' => ['code' => 'GB', 'name' => 'United Kingdom', 'active' => true, 'research' => null],
+        'GH' => ['code' => 'GH', 'name' => 'Ghana', 'active' => true, 'research' => ['holidays' => ['Eid ul-Fitr', 'Eid al-Adha'], 'domains' => ['timeanddate.com']]],
+        'NG' => ['code' => 'NG', 'name' => 'Nigeria', 'active' => true, 'research' => ['holidays' => ['Eid al-Fitr', 'Eid al-Adha', 'Id el-Maulud'], 'domains' => ['timeanddate.com']]],
+        'US' => ['code' => 'US', 'name' => 'United States', 'active' => true, 'research' => null],
     ];
 
     /** @var array<string, list<array>> region => rules (the fake computes only `fixed` dates) */
@@ -550,10 +550,11 @@ class FakeCalendarClient implements CalendarClient
         return $rows;
     }
 
-    public function putHolidayRegion(string $code, string $name, bool $active = true, ?string $by = null): array
+    public function putHolidayRegion(string $code, string $name, bool $active = true, ?string $by = null, array|null|false $research = false): array
     {
         $this->log(__FUNCTION__, func_get_args());
-        $this->holidayRegionRows[$code] = ['code' => $code, 'name' => $name, 'active' => $active];
+        $keep = $this->holidayRegionRows[$code]['research'] ?? null;
+        $this->holidayRegionRows[$code] = ['code' => $code, 'name' => $name, 'active' => $active, 'research' => $research === false ? $keep : $research];
 
         return $this->holidayRegions();
     }

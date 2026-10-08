@@ -293,9 +293,11 @@ class CalendarServiceClient implements CalendarClient
         return array_values($this->send('GET', 'api/v1/holidays/regions'));
     }
 
-    public function putHolidayRegion(string $code, string $name, bool $active = true, ?string $by = null): array
+    public function putHolidayRegion(string $code, string $name, bool $active = true, ?string $by = null, array|null|false $research = false): array
     {
-        return array_values($this->send('PUT', 'api/v1/holiday-regions/'.rawurlencode($code), ['name' => $name, 'active' => $active] + ($by !== null ? ['updated_by' => $by] : [])));
+        $body = ['name' => $name, 'active' => $active] + ($by !== null ? ['updated_by' => $by] : []) + ($research !== false ? ['research' => $research] : []);
+
+        return array_values($this->send('PUT', 'api/v1/holiday-regions/'.rawurlencode($code), $body));
     }
 
     public function holidayDefinitions(string $region): array
