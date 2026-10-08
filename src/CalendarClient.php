@@ -186,4 +186,51 @@ interface CalendarClient
      * @return array{offsets_minutes: list<int>, is_default: bool, default_offsets_minutes: list<int>}
      */
     public function setReminderPolicy(?array $offsetsMinutes, ?string $by = null): array;
+
+    // Scheduling policy (buffer floor and ceiling, notice, horizon, hold, seed week), per product
+
+    /** @return array{policy: array<string, mixed>, is_default: bool, defaults: array<string, mixed>} */
+    public function schedulingPolicy(): array;
+
+    /**
+     * The whole policy (keys left out fall back to the service defaults); null = the defaults.
+     *
+     * @param  array<string, mixed>|null  $policy
+     * @return array{policy: array<string, mixed>, is_default: bool, defaults: array<string, mixed>}
+     */
+    public function setSchedulingPolicy(?array $policy, ?string $by = null): array;
+
+    /**
+     * The calling product's schedule refs whose people can be booked (weekly hours now or ahead),
+     * computed from the spec on every call. Pass refs to narrow it.
+     *
+     * @param  list<string>|null  $refs
+     * @return list<string>
+     */
+    public function bookableRefs(?array $refs = null): array;
+
+    // Holiday places and rules (data, shared by every product)
+
+    /** @return list<array{code:string, name:string, active:bool}> */
+    public function holidayRegions(): array;
+
+    /** @return list<array{code:string, name:string, active:bool}> */
+    public function putHolidayRegion(string $code, string $name, bool $active = true, ?string $by = null): array;
+
+    /** @return list<array{id:int, name:string, kind:string, params:array, active:bool, next:?string}> */
+    public function holidayDefinitions(string $region): array;
+
+    /** @return list<array{date:string, name:string}> */
+    public function holidayPreview(string $region, int $year): array;
+
+    /**
+     * Add (id null) or change a rule; the place's dates follow at once.
+     *
+     * @param  array{name:string, kind:string, params:array, active?:bool}  $definition
+     * @return list<array> the place's rules after the change
+     */
+    public function saveHolidayDefinition(string $region, ?int $id, array $definition, ?string $by = null): array;
+
+    /** @return list<array> the place's rules after the change */
+    public function deleteHolidayDefinition(string $region, int $id): array;
 }

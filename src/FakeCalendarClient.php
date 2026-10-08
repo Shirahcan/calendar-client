@@ -469,6 +469,138 @@ class FakeCalendarClient implements CalendarClient
         ];
     }
 
+    /** The service's defaults (calendar-service config scheduling.defaults). */
+    public const SCHEDULING_DEFAULTS = [
+        'min_buffer_minutes' => 0,
+        'max_buffer_minutes' => 240,
+        'default_buffer_minutes' => 0,
+        'buffer_choices' => [0, 5, 10, 15, 20, 30, 45, 60],
+        'min_notice_minutes' => 0,
+        'horizon_days' => 60,
+        'hold_seconds' => 900,
+        'seed_weekly' => [['days' => ['mon', 'tue', 'wed', 'thu', 'fri'], 'start' => '09:00', 'end' => '17:00']],
+        'observe_holidays_by_default' => true,
+    ];
+
+    /** @var array<string, mixed>|null null = the service defaults */
+    public ?array $schedulingPolicy = null;
+
+    public function schedulingPolicy(): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        return $this->schedulingPayload();
+    }
+
+    public function setSchedulingPolicy(?array $policy, ?string $by = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $this->schedulingPolicy = $policy === null ? null : array_intersect_key($policy, self::SCHEDULING_DEFAULTS);
+
+        return $this->schedulingPayload();
+    }
+
+    private function schedulingPayload(): array
+    {
+        return [
+            'policy' => array_merge(self::SCHEDULING_DEFAULTS, $this->schedulingPolicy ?? []),
+            'is_default' => $this->schedulingPolicy === null,
+            'defaults' => self::SCHEDULING_DEFAULTS,
+        ];
+    }
+
+    public function bookableRefs(?array $refs = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $today = $this->now()->format('Y-m-d');
+        $live = fn (array $rows) => array_filter($rows, fn ($r) => ($r['valid_until'] ?? null) === null || $r['valid_until'] >= $today) !== [];
+        $out = [];
+        foreach ($this->schedules as $ref => $row) {
+            if ($refs !== null && ! in_array($ref, $refs, true)) {
+                continue;
+            }
+            $spec = (array) ($row['spec'] ?? []);
+            $periods = array_filter((array) ($spec['periods'] ?? []), fn ($p) => ($p['to'] ?? '') >= $today && $live((array) ($p['weekly'] ?? [])));
+            if ($live((array) ($spec['weekly'] ?? [])) || $periods !== []) {
+                $out[] = (string) $ref;
+            }
+        }
+
+        return $out;
+    }
+
+    /** @var array<string, array{code:string,name:string,active:bool}> */
+    public array $holidayRegionRows = [
+        'CA' => ['code' => 'CA', 'name' => 'Canada', 'active' => true],
+        'GB' => ['code' => 'GB', 'name' => 'United Kingdom', 'active' => true],
+        'GH' => ['code' => 'GH', 'name' => 'Ghana', 'active' => true],
+        'NG' => ['code' => 'NG', 'name' => 'Nigeria', 'active' => true],
+        'US' => ['code' => 'US', 'name' => 'United States', 'active' => true],
+    ];
+
+    /** @var array<string, list<array>> region => rules (the fake computes only `fixed` dates) */
+    public array $holidayDefinitionRows = [];
+
+    public function holidayRegions(): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $rows = array_values($this->holidayRegionRows);
+        usort($rows, fn ($a, $b) => strcmp($a['name'], $b['name']));
+
+        return $rows;
+    }
+
+    public function putHolidayRegion(string $code, string $name, bool $active = true, ?string $by = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $this->holidayRegionRows[$code] = ['code' => $code, 'name' => $name, 'active' => $active];
+
+        return $this->holidayRegions();
+    }
+
+    public function holidayDefinitions(string $region): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        return array_values($this->holidayDefinitionRows[$region] ?? []);
+    }
+
+    public function holidayPreview(string $region, int $year): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $out = [];
+        foreach ($this->holidayDefinitionRows[$region] ?? [] as $d) {
+            if ($d['kind'] === 'fixed' && ($d['active'] ?? true)) {
+                $out[] = ['date' => sprintf('%04d-%02d-%02d', $year, $d['params']['month'], $d['params']['day']), 'name' => $d['name']];
+            }
+        }
+        usort($out, fn ($a, $b) => strcmp($a['date'], $b['date']));
+
+        return $out;
+    }
+
+    public function saveHolidayDefinition(string $region, ?int $id, array $definition, ?string $by = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $rows = $this->holidayDefinitionRows[$region] ?? [];
+        $id ??= 1 + max([0, ...array_column($rows, 'id')]);
+        $row = ['id' => $id, 'name' => $definition['name'], 'kind' => $definition['kind'], 'params' => $definition['params'], 'active' => $definition['active'] ?? true, 'next' => null];
+        $rows = array_values(array_filter($rows, fn ($r) => $r['id'] !== $id));
+        $rows[] = $row;
+        usort($rows, fn ($a, $b) => $a['id'] <=> $b['id']);
+        $this->holidayDefinitionRows[$region] = $rows;
+
+        return $rows;
+    }
+
+    public function deleteHolidayDefinition(string $region, int $id): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $this->holidayDefinitionRows[$region] = array_values(array_filter($this->holidayDefinitionRows[$region] ?? [], fn ($r) => $r['id'] !== $id));
+
+        return $this->holidayDefinitionRows[$region];
+    }
+
     public function putHoliday(string $region, string $date, string $name, ?string $by = null): array
     {
         $this->log(__FUNCTION__, func_get_args());

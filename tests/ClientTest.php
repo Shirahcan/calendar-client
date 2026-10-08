@@ -334,6 +334,75 @@ class ClientTest extends TestCase
         $this->assertSame([], $client->schedules([]));
     }
 
+    public function test_the_scheduling_policy_is_read_and_set_on_the_service(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['data' => ['policy' => ['min_buffer_minutes' => 0], 'is_default' => true, 'defaults' => []]]),
+            $this->json(200, ['data' => ['policy' => ['min_buffer_minutes' => 5], 'is_default' => false, 'defaults' => []]]),
+            $this->json(200, ['data' => ['policy' => ['min_buffer_minutes' => 0], 'is_default' => true, 'defaults' => []]]),
+        );
+
+        $this->assertTrue($client->schedulingPolicy()['is_default']);
+        $this->assertSame(5, $client->setSchedulingPolicy(['min_buffer_minutes' => 5], 'admin-1')['policy']['min_buffer_minutes']);
+        $this->assertSame(['policy' => ['min_buffer_minutes' => 5], 'updated_by' => 'admin-1'], json_decode((string) $this->history[1]['request']->getBody(), true));
+        $client->setSchedulingPolicy(null);
+        $this->assertSame(['policy' => null], json_decode((string) $this->history[2]['request']->getBody(), true));
+        $this->assertSame('/api/v1/scheduling/policy', $this->history[2]['request']->getUri()->getPath());
+
+        $fake = new FakeCalendarClient();
+        $this->assertSame(0, $fake->schedulingPolicy()['policy']['min_buffer_minutes']);
+        $this->assertSame(5, $fake->setSchedulingPolicy(['min_buffer_minutes' => 5, 'junk' => 1])['policy']['min_buffer_minutes']);
+        $this->assertArrayNotHasKey('junk', $fake->schedulingPolicy()['policy']);
+        $this->assertTrue($fake->setSchedulingPolicy(null)['is_default']);
+    }
+
+    public function test_bookable_refs_are_asked_of_the_service(): void
+    {
+        $client = $this->client($this->json(200, ['data' => ['a']]), $this->json(200, ['data' => ['a']]));
+
+        $this->assertSame(['a'], $client->bookableRefs());
+        $this->assertSame('bookable=1', $this->history[0]['request']->getUri()->getQuery());
+        $this->assertSame(['a'], $client->bookableRefs(['a', 'b']));
+        $this->assertSame('bookable=1&refs%5B0%5D=a&refs%5B1%5D=b', $this->history[1]['request']->getUri()->getQuery());
+        $this->assertSame([], $client->bookableRefs([]));
+
+        $fake = (new FakeCalendarClient())->travelTo(new \DateTimeImmutable('2026-10-08'));
+        $fake->upsertSchedule('weekly', null, ['schema' => 1, 'timezone' => ['zone' => 'UTC'], 'weekly' => [['days' => ['mon'], 'start' => '09:00', 'end' => '10:00']]]);
+        $fake->upsertSchedule('ended', null, ['schema' => 1, 'timezone' => ['zone' => 'UTC'], 'weekly' => [['days' => ['mon'], 'start' => '09:00', 'end' => '10:00', 'valid_until' => '2026-09-01']]]);
+        $fake->upsertSchedule('none', null, ['schema' => 1, 'timezone' => ['zone' => 'UTC']]);
+        $this->assertSame(['weekly'], $fake->bookableRefs());
+        $this->assertSame([], $fake->bookableRefs(['none']));
+    }
+
+    public function test_holiday_places_and_rules_are_data_on_the_service(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['data' => [['code' => 'CA', 'name' => 'Canada', 'active' => true]]]),
+            $this->json(200, ['data' => [['id' => 1, 'name' => 'Madaraka Day']]]),
+            $this->json(200, ['data' => [['id' => 1, 'name' => 'Madaraka Day']]]),
+            $this->json(200, ['data' => []]),
+            $this->json(200, ['data' => [['date' => '2028-06-01', 'name' => 'Madaraka Day']]]),
+        );
+
+        $this->assertSame('CA', $client->holidayRegions()[0]['code']);
+        $client->saveHolidayDefinition('KE', null, ['name' => 'Madaraka Day', 'kind' => 'fixed', 'params' => ['month' => 6, 'day' => 1]], 'admin-1');
+        $client->saveHolidayDefinition('KE', 1, ['name' => 'Madaraka Day', 'kind' => 'fixed', 'params' => ['month' => 6, 'day' => 1]]);
+        $client->deleteHolidayDefinition('KE', 1);
+        $this->assertSame('2028-06-01', $client->holidayPreview('KE', 2028)[0]['date']);
+
+        $this->assertSame(['POST', '/api/v1/holiday-definitions/KE'], [$this->history[1]['request']->getMethod(), $this->history[1]['request']->getUri()->getPath()]);
+        $this->assertSame(['PUT', '/api/v1/holiday-definitions/KE/1'], [$this->history[2]['request']->getMethod(), $this->history[2]['request']->getUri()->getPath()]);
+        $this->assertSame('DELETE', $this->history[3]['request']->getMethod());
+        $this->assertSame('year=2028', $this->history[4]['request']->getUri()->getQuery());
+
+        $fake = new FakeCalendarClient();
+        $fake->putHolidayRegion('KE', 'Kenya');
+        $this->assertContains('KE', array_column($fake->holidayRegions(), 'code'));
+        $fake->saveHolidayDefinition('KE', null, ['name' => 'Madaraka Day', 'kind' => 'fixed', 'params' => ['month' => 6, 'day' => 1]]);
+        $this->assertSame([['date' => '2028-06-01', 'name' => 'Madaraka Day']], $fake->holidayPreview('KE', 2028));
+        $this->assertSame([], $fake->deleteHolidayDefinition('KE', 1));
+    }
+
     public function test_the_fake_keeps_a_rejected_holiday_rejected(): void
     {
         $fake = new FakeCalendarClient();

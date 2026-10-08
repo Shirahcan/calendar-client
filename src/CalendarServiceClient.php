@@ -262,6 +262,65 @@ class CalendarServiceClient implements CalendarClient
         ] + ($by !== null ? ['updated_by' => $by] : []));
     }
 
+    public function schedulingPolicy(): array
+    {
+        return $this->send('GET', 'api/v1/scheduling/policy');
+    }
+
+    public function setSchedulingPolicy(?array $policy, ?string $by = null): array
+    {
+        return $this->send('PUT', 'api/v1/scheduling/policy', ['policy' => $policy] + ($by !== null ? ['updated_by' => $by] : []));
+    }
+
+    public function bookableRefs(?array $refs = null): array
+    {
+        if ($refs === []) {
+            return [];
+        }
+        if ($refs === null) {
+            return array_values(array_map('strval', $this->send('GET', 'api/v1/schedules', ['bookable' => 1])));
+        }
+        $out = [];
+        foreach (array_chunk(array_values(array_unique($refs)), 500) as $chunk) {
+            array_push($out, ...array_map('strval', $this->send('GET', 'api/v1/schedules', ['bookable' => 1, 'refs' => $chunk])));
+        }
+
+        return $out;
+    }
+
+    public function holidayRegions(): array
+    {
+        return array_values($this->send('GET', 'api/v1/holidays/regions'));
+    }
+
+    public function putHolidayRegion(string $code, string $name, bool $active = true, ?string $by = null): array
+    {
+        return array_values($this->send('PUT', 'api/v1/holiday-regions/'.rawurlencode($code), ['name' => $name, 'active' => $active] + ($by !== null ? ['updated_by' => $by] : [])));
+    }
+
+    public function holidayDefinitions(string $region): array
+    {
+        return array_values($this->send('GET', 'api/v1/holiday-definitions/'.rawurlencode($region)));
+    }
+
+    public function holidayPreview(string $region, int $year): array
+    {
+        return array_values($this->send('GET', 'api/v1/holiday-definitions/'.rawurlencode($region).'/preview', ['year' => $year]));
+    }
+
+    public function saveHolidayDefinition(string $region, ?int $id, array $definition, ?string $by = null): array
+    {
+        $path = 'api/v1/holiday-definitions/'.rawurlencode($region).($id !== null ? '/'.$id : '');
+        $body = $definition + ($by !== null ? ['updated_by' => $by] : []);
+
+        return array_values($this->send($id === null ? 'POST' : 'PUT', $path, $body));
+    }
+
+    public function deleteHolidayDefinition(string $region, int $id): array
+    {
+        return array_values($this->send('DELETE', 'api/v1/holiday-definitions/'.rawurlencode($region).'/'.$id));
+    }
+
     public function putHoliday(string $region, string $date, string $name, ?string $by = null): array
     {
         return $this->send('PUT', $this->holidayPath($region, $date), array_filter(['name' => $name, 'by' => $by], fn ($v) => $v !== null));
