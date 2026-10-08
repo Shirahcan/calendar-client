@@ -434,7 +434,32 @@ class FakeCalendarClient implements CalendarClient
     /** @var array<string, array> booking id => its call link */
     public array $callLinks = [];
 
-    public function callLink(string $bookingId, string $tool, ?string $hostAuthId = null): array
+    /** @var array<string, array{call_tool: ?string, requires_approval: bool}> host => preferences */
+    public array $hostPreferences = [];
+
+    public function hostPreferences(string $hostAuthId): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        return $this->hostPreferences[$hostAuthId] ?? ['call_tool' => null, 'requires_approval' => false];
+    }
+
+    public function setHostPreferences(string $hostAuthId, array $preferences): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $current = $this->hostPreferences[$hostAuthId] ?? ['call_tool' => null, 'requires_approval' => false];
+        $tool = array_key_exists('call_tool', $preferences) ? $preferences['call_tool'] : $current['call_tool'];
+        if ($tool === 'zoom' && array_filter($this->callTools[$hostAuthId] ?? [], fn ($t) => ($t['tool'] ?? null) === 'zoom' && ($t['status'] ?? 'active') === 'active') === []) {
+            throw new CalendarRequestRejected('Connect your Zoom account first.', 'not_connected', 422);
+        }
+
+        return $this->hostPreferences[$hostAuthId] = [
+            'call_tool' => $tool,
+            'requires_approval' => (bool) ($preferences['requires_approval'] ?? $current['requires_approval']),
+        ];
+    }
+
+    public function callLink(string $bookingId, ?string $tool = null, ?string $hostAuthId = null): ?array
     {
         $this->log(__FUNCTION__, func_get_args());
         $b = $this->find($bookingId);
@@ -443,6 +468,10 @@ class FakeCalendarClient implements CalendarClient
         }
         $hosts = (array) ($b['hosts'] ?? []);
         $host = $hostAuthId ?? ($hosts[0] ?? null);
+        $tool ??= $this->hostPreferences[$host]['call_tool'] ?? null;
+        if ($tool === null) {
+            return null;
+        }
         $connected = $tool === 'google_meet' || array_filter($this->callTools[$host] ?? [], fn ($t) => ($t['tool'] ?? null) === $tool && ($t['status'] ?? 'active') === 'active') !== [];
         if (! $connected) {
             throw new CalendarRequestRejected('This host has not connected Zoom.', 'not_connected', 422);
@@ -522,7 +551,17 @@ class FakeCalendarClient implements CalendarClient
         'hold_seconds' => 900,
         'seed_weekly' => [['days' => ['mon', 'tue', 'wed', 'thu', 'fri'], 'start' => '09:00', 'end' => '17:00']],
         'observe_holidays_by_default' => true,
+        'cancel_notice_minutes' => 1440,
+        'reschedule_notice_minutes' => 1440,
+        'call_tools_offered' => ['zoom', 'google_meet'],
+        'calendar_providers_offered' => ['google', 'microsoft'],
+        'default_duration_minutes' => 60,
+        'duration_choices' => [15, 30, 45, 60, 90],
+        'session_lengths' => ['quick_question' => 15, 'standard' => 30, 'extended' => 60, 'business' => 60],
     ];
+
+    /** What the fake server can connect (the real one leaves out apps with no credentials). */
+    public array $configured = ['call_tools' => ['zoom', 'google_meet'], 'calendar_providers' => ['google', 'microsoft']];
 
     /** @var array<string, mixed>|null null = the service defaults */
     public ?array $schedulingPolicy = null;
@@ -544,10 +583,16 @@ class FakeCalendarClient implements CalendarClient
 
     private function schedulingPayload(): array
     {
+        $policy = array_merge(self::SCHEDULING_DEFAULTS, $this->schedulingPolicy ?? []);
+
         return [
-            'policy' => array_merge(self::SCHEDULING_DEFAULTS, $this->schedulingPolicy ?? []),
+            'policy' => $policy,
             'is_default' => $this->schedulingPolicy === null,
             'defaults' => self::SCHEDULING_DEFAULTS,
+            'offered' => [
+                'call_tools' => array_values(array_intersect((array) $policy['call_tools_offered'], $this->configured['call_tools'])),
+                'calendar_providers' => array_values(array_intersect((array) $policy['calendar_providers_offered'], $this->configured['calendar_providers'])),
+            ],
         ];
     }
 

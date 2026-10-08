@@ -148,12 +148,24 @@ interface CalendarClient
     public function disconnectCallTool(int $callToolId, string $hostAuthId): array;
 
     /**
-     * The booking's call link on the host's own tool, made once (asking again returns it).
+     * The booking's call link on the host's own tool, made once (asking again returns it). With no
+     * tool, the host's own preference; null when they have none (the product's own room).
      *
-     * @param 'zoom'|'google_meet' $tool
-     * @return array{booking_id: string, tool: string, url: string}
+     * @param 'zoom'|'google_meet'|null $tool
+     * @return array{booking_id: string, tool: string, url: string}|null
      */
-    public function callLink(string $bookingId, string $tool, ?string $hostAuthId = null): array;
+    public function callLink(string $bookingId, ?string $tool = null, ?string $hostAuthId = null): ?array;
+
+    // The person's own preferences (one place for every product)
+
+    /** @return array{call_tool: ?string, requires_approval: bool} */
+    public function hostPreferences(string $hostAuthId): array;
+
+    /**
+     * @param array{call_tool?: ?string, requires_approval?: bool} $preferences only the keys given change
+     * @return array{call_tool: ?string, requires_approval: bool}
+     */
+    public function setHostPreferences(string $hostAuthId, array $preferences): array;
 
     /**
      * Hand over existing connections (D6), 1 to 200 rows of {host_auth_id, provider,

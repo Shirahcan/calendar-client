@@ -199,6 +199,18 @@ class ClientTest extends TestCase
         $this->assertSame('/api/v1/call-tools/4', $this->history[2]['request']->getUri()->getPath());
     }
 
+    public function test_the_fake_keeps_host_preferences_and_uses_them_for_a_call_link(): void
+    {
+        $fake = new FakeCalendarClient();
+        $booking = $fake->createMeeting(['auth-1'], new DateTimeImmutable('2026-10-12T14:00:00Z'), new DateTimeImmutable('2026-10-12T15:00:00Z'), 'k-1');
+
+        $this->assertNull($fake->callLink($booking->id), 'no preference: the product uses its own room');
+        $fake->callTools['auth-1'] = [['id' => 1, 'tool' => 'zoom', 'status' => 'active']];
+        $this->assertSame('zoom', $fake->setHostPreferences('auth-1', ['call_tool' => 'zoom'])['call_tool']);
+        $this->assertSame('zoom', $fake->callLink($booking->id)['tool']);
+        $this->assertSame(['call_tools' => ['zoom', 'google_meet'], 'calendar_providers' => ['google', 'microsoft']], $fake->schedulingPolicy()['offered']);
+    }
+
     public function test_the_fake_makes_a_call_link_once_and_only_for_a_connected_tool(): void
     {
         $fake = new FakeCalendarClient();
