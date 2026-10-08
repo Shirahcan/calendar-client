@@ -113,6 +113,126 @@ class FakeCalendarClient implements CalendarClient
         return $this->bookingTypes[$ref] = ['ref' => $ref] + $definition;
     }
 
+    /** @var array<string, array> ref => link, in the service's shape */
+    public array $links = [];
+
+    public function links(string $hostAuthId): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $rows = array_values(array_filter($this->links, fn ($l) => $l['host'] === $hostAuthId));
+        usort($rows, fn ($a, $b) => [$b['is_default'], $a['name']] <=> [$a['is_default'], $b['name']]);
+
+        return $rows;
+    }
+
+    public function createLink(string $hostAuthId, array $fields): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $this->assertLinkFields($fields, true);
+        $ref = (string) ($fields['ref'] ?? 'link:'.bin2hex(random_bytes(8)));
+        $hasDefault = array_filter($this->links, fn ($l) => $l['host'] === $hostAuthId && $l['is_default']) !== [];
+        $this->links[$ref] = $this->linkRow($ref, $hostAuthId, $fields + ['is_active' => true, 'is_default' => false]);
+        $this->links[$ref]['is_default'] = false;
+        if (($fields['is_default'] ?? false) || ! $hasDefault) {
+            $this->setDefaultLink($ref);
+        }
+
+        return $this->links[$ref];
+    }
+
+    public function updateLink(string $ref, array $fields): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $current = $this->links[$ref] ?? throw new CalendarNotFound('Link not found.', null, 404);
+        $this->assertLinkFields($fields, false);
+        $default = $current['is_default'];
+        $this->links[$ref] = $this->linkRow($ref, $current['host'], array_merge($current, $fields));
+        $this->links[$ref]['is_default'] = $default;
+        if (($fields['is_default'] ?? false) === true) {
+            $this->setDefaultLink($ref);
+        }
+
+        return $this->links[$ref];
+    }
+
+    public function setDefaultLink(string $ref): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $host = ($this->links[$ref] ?? throw new CalendarNotFound('Link not found.', null, 404))['host'];
+        foreach ($this->links as $r => $l) {
+            if ($l['host'] === $host) {
+                $this->links[$r]['is_default'] = $r === $ref;
+            }
+        }
+
+        return $this->links[$ref];
+    }
+
+    public function deleteLink(string $ref): void
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $link = $this->links[$ref] ?? throw new CalendarNotFound('Link not found.', null, 404);
+        unset($this->links[$ref]);
+        $next = array_key_first(array_filter($this->links, fn ($l) => $l['host'] === $link['host']));
+        if ($link['is_default'] && $next !== null) {
+            $this->setDefaultLink($next);
+        }
+    }
+
+    private function linkRow(string $ref, string $host, array $f): array
+    {
+        $slug = $f['slug'] ?? null;
+        $fromName = trim((string) preg_replace('/[^a-z0-9]+/', '-', strtolower((string) $f['name'])), '-');
+
+        return [
+            'ref' => $ref, 'host' => $host, 'name' => (string) $f['name'], 'description' => $f['description'] ?? null,
+            'color' => $f['color'] ?? null,
+            'slug' => is_string($slug) && $slug !== '' ? $slug : ($fromName !== '' ? $fromName : 'link'),
+            'is_active' => (bool) ($f['is_active'] ?? true), 'is_default' => (bool) ($f['is_default'] ?? false),
+            'external_url' => $f['external_url'] ?? null, 'duration' => (int) $f['duration'],
+            'buffer_before' => $f['buffer_before'] ?? null, 'buffer_after' => $f['buffer_after'] ?? null,
+            'daily_cap' => $f['daily_cap'] ?? null, 'days_ahead' => $f['days_ahead'] ?? null,
+        ];
+    }
+
+    /** The service's two most common refusals, so product tests see the real shape. */
+    private function assertLinkFields(array $f, bool $creating): void
+    {
+        $errors = [];
+        if (($creating || array_key_exists('name', $f)) && trim((string) ($f['name'] ?? '')) === '') {
+            $errors[] = 'Give the link a name of up to 255 characters.';
+        }
+        $choices = array_map('intval', (array) (($this->schedulingPolicy ?? [])['duration_choices'] ?? self::SCHEDULING_DEFAULTS['duration_choices']));
+        if (($creating || array_key_exists('duration', $f)) && ! in_array((int) ($f['duration'] ?? 0), $choices, true)) {
+            $errors[] = 'Choose a length of '.implode(', ', $choices).' minutes.';
+        }
+        if ($errors !== []) {
+            throw new CalendarRequestRejected('The link cannot be saved.', null, 422, $errors);
+        }
+    }
+
+    /** In the service's shape: rules nested, as GET /v1/booking-types answers. */
+    public function bookingTypes(array $refs): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $out = [];
+        foreach ($refs as $ref) {
+            if (! isset($this->bookingTypes[$ref])) {
+                continue;
+            }
+            $d = $this->bookingTypes[$ref];
+            $out[$ref] = [
+                'ref' => $ref,
+                'hosts' => $d['hosts'] ?? [],
+                'rules' => array_intersect_key($d, array_flip(['duration', 'step', 'buffer_before', 'buffer_after', 'min_notice', 'horizon', 'daily_cap', 'grid', 'durations'])),
+                'approval' => $d['approval'] ?? ['required' => false, 'blocks_slot' => true],
+                'hold_ttl' => $d['hold_ttl'] ?? null,
+            ];
+        }
+
+        return $out;
+    }
+
     public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null): array
     {
         $this->log(__FUNCTION__, func_get_args());

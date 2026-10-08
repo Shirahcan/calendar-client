@@ -77,6 +77,43 @@ class CalendarServiceClient implements CalendarClient
         return $this->send('PUT', 'api/v1/booking-types/'.rawurlencode($ref), $definition);
     }
 
+    public function links(string $hostAuthId): array
+    {
+        return array_values($this->send('GET', 'api/v1/hosts/'.rawurlencode($hostAuthId).'/links'));
+    }
+
+    public function createLink(string $hostAuthId, array $fields): array
+    {
+        return $this->send('POST', 'api/v1/hosts/'.rawurlencode($hostAuthId).'/links', $fields);
+    }
+
+    public function updateLink(string $ref, array $fields): array
+    {
+        return $this->send('PATCH', 'api/v1/links/'.rawurlencode($ref), $fields);
+    }
+
+    public function setDefaultLink(string $ref): array
+    {
+        return $this->send('POST', 'api/v1/links/'.rawurlencode($ref).'/default');
+    }
+
+    public function deleteLink(string $ref): void
+    {
+        $this->send('DELETE', 'api/v1/links/'.rawurlencode($ref));
+    }
+
+    public function bookingTypes(array $refs): array
+    {
+        $out = [];
+        foreach (array_chunk(array_values(array_unique($refs)), 200) as $chunk) {
+            foreach ($this->send('GET', 'api/v1/booking-types', ['refs' => $chunk]) as $type) {
+                $out[$type['ref']] = $type;
+            }
+        }
+
+        return $out;
+    }
+
     public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null): array
     {
         $data = $this->send('GET', 'api/v1/booking-types/'.rawurlencode($bookingTypeRef).'/slots', array_filter([

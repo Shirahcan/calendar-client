@@ -214,6 +214,40 @@ class ClientTest extends TestCase
         $this->assertNull($fake->hostPreferences('auth-1')['call_tool'], 'the preference falls away with the tool');
     }
 
+    public function test_the_fake_manages_links_like_the_service(): void
+    {
+        $fake = new FakeCalendarClient();
+        $a = $fake->createLink('auth-1', ['name' => 'Initial Consultation', 'duration' => 30, 'days_ahead' => 14])['ref'];
+        $b = $fake->createLink('auth-1', ['name' => 'Extended', 'duration' => 60])['ref'];
+
+        $this->assertSame([true, false], [$fake->links[$a]['is_default'], $fake->links[$b]['is_default']]);
+        $this->assertSame('initial-consultation', $fake->links[$a]['slug']);
+        $this->assertSame(7, $fake->updateLink($a, ['days_ahead' => 7])['days_ahead']);
+        $fake->setDefaultLink($b);
+        $this->assertSame($b, $fake->links('auth-1')[0]['ref']);
+
+        try {
+            $fake->createLink('auth-1', ['name' => '', 'duration' => 7]);
+            $this->fail('refused');
+        } catch (\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected $e) {
+            $this->assertCount(2, $e->errors);
+        }
+
+        $fake->deleteLink($b);
+        $this->assertTrue($fake->links[$a]['is_default'], 'the default passes on');
+    }
+
+    public function test_the_fake_reads_booking_types_back_in_the_services_shape(): void
+    {
+        $fake = new FakeCalendarClient();
+        $fake->upsertBookingType('link:1', ['duration' => 30, 'daily_cap' => 3, 'horizon' => 'P14D', 'hosts' => ['mode' => 'single', 'members' => []]]);
+
+        $types = $fake->bookingTypes(['link:1', 'missing']);
+
+        $this->assertSame(['link:1'], array_keys($types));
+        $this->assertSame(['duration' => 30, 'daily_cap' => 3, 'horizon' => 'P14D'], $types['link:1']['rules']);
+    }
+
     public function test_a_host_who_approves_their_own_bookings_gets_them_pending_in_the_fake(): void
     {
         $nine = new DateTimeImmutable('2026-10-12T13:00:00Z');

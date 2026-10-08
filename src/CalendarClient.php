@@ -36,6 +36,40 @@ interface CalendarClient
     /** @param array $definition duration, step, buffers, notice, horizon, daily_cap, approval, hold_ttl, hosts{mode, members[{host, schedule}]} */
     public function upsertBookingType(string $ref, array $definition): array;
 
+    /**
+     * Several of this product's booking types in one call, keyed by ref (missing ones left out).
+     *
+     * @param list<string> $refs
+     * @return array<string, array{ref: string, hosts: array, rules: array, approval: array, hold_ttl: ?int}>
+     */
+    public function bookingTypes(array $refs): array;
+
+    // Booking links: a host's own ways to be booked, managed with or without the shared UI
+
+    /**
+     * A host's links as the service reads them back. buffer_* null = the host's usual buffer;
+     * days_ahead null = the policy's horizon; daily_cap null = no limit.
+     *
+     * @return list<array{ref: string, host: string, name: string, description: ?string, color: ?string, slug: string, is_active: bool, is_default: bool, external_url: ?string, duration: ?int, buffer_before: ?int, buffer_after: ?int, daily_cap: ?int, days_ahead: ?int}>
+     */
+    public function links(string $hostAuthId): array;
+
+    /**
+     * @param  array<string, mixed>  $fields  name and duration required; description, color, slug, is_active,
+     *                                        is_default, external_url, buffer_before, buffer_after, daily_cap, days_ahead,
+     *                                        schedule, ref optional
+     *
+     * @throws Exceptions\CalendarRequestRejected with every reason in `errors`
+     */
+    public function createLink(string $hostAuthId, array $fields): array;
+
+    /** Only the keys given change. */
+    public function updateLink(string $ref, array $fields): array;
+
+    public function setDefaultLink(string $ref): array;
+
+    public function deleteLink(string $ref): void;
+
     // Slots
 
     /**
