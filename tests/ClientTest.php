@@ -180,6 +180,42 @@ class ClientTest extends TestCase
         $this->assertSame('/api/v1/connections/adopt', $this->history[2]['request']->getUri()->getPath());
     }
 
+    public function test_call_tools_and_call_links_hit_their_routes(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['success' => true, 'data' => [['id' => 4, 'host' => 'auth-1', 'tool' => 'zoom', 'account_email' => 'a@b.c', 'status' => 'active', 'last_error' => null]]]),
+            $this->json(200, ['success' => true, 'data' => ['booking_id' => 'b-1', 'tool' => 'zoom', 'url' => 'https://zoom.us/j/1']]),
+            $this->json(200, ['success' => true, 'data' => ['id' => 4, 'status' => 'revoked']]),
+        );
+
+        $this->assertSame('zoom', $client->callTools('auth-1')[0]['tool']);
+        $this->assertSame('https://zoom.us/j/1', $client->callLink('b-1', 'zoom')['url']);
+        $client->disconnectCallTool(4, 'auth-1');
+
+        $this->assertSame('/api/v1/hosts/auth-1/call-tools', $this->history[0]['request']->getUri()->getPath());
+        $this->assertSame('/api/v1/bookings/b-1/call-link', $this->history[1]['request']->getUri()->getPath());
+        $this->assertSame(['tool' => 'zoom'], json_decode((string) $this->history[1]['request']->getBody(), true));
+        $this->assertSame('DELETE', $this->history[2]['request']->getMethod());
+        $this->assertSame('/api/v1/call-tools/4', $this->history[2]['request']->getUri()->getPath());
+    }
+
+    public function test_the_fake_makes_a_call_link_once_and_only_for_a_connected_tool(): void
+    {
+        $fake = new FakeCalendarClient();
+        $booking = $fake->createMeeting(['auth-1'], new DateTimeImmutable('2026-10-12T14:00:00Z'), new DateTimeImmutable('2026-10-12T15:00:00Z'), 'k-1');
+
+        try {
+            $fake->callLink($booking->id, 'zoom');
+            $this->fail('a host without Zoom must be refused');
+        } catch (\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected) {
+        }
+
+        $fake->callTools['auth-1'] = [['id' => 1, 'tool' => 'zoom', 'status' => 'active']];
+        $first = $fake->callLink($booking->id, 'zoom');
+        $this->assertSame($first, $fake->callLink($booking->id, 'zoom'));
+        $this->assertSame('google_meet', $fake->callLink((string) $fake->createMeeting(['auth-1'], new DateTimeImmutable('2026-10-13T14:00:00Z'), new DateTimeImmutable('2026-10-13T15:00:00Z'), 'k-2')->id, 'google_meet')['tool']);
+    }
+
     public function test_the_fake_keeps_mirrors_and_never_logs_tokens(): void
     {
         $fake = new FakeCalendarClient();

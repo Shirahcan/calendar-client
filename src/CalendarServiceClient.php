@@ -243,6 +243,21 @@ class CalendarServiceClient implements CalendarClient
         return $this->send('DELETE', "api/v1/connections/{$connectionId}", ['host' => $hostAuthId]);
     }
 
+    public function callTools(string $hostAuthId): array
+    {
+        return array_values($this->send('GET', 'api/v1/hosts/'.rawurlencode($hostAuthId).'/call-tools'));
+    }
+
+    public function disconnectCallTool(int $callToolId, string $hostAuthId): array
+    {
+        return $this->send('DELETE', "api/v1/call-tools/{$callToolId}", ['host' => $hostAuthId]);
+    }
+
+    public function callLink(string $bookingId, string $tool, ?string $hostAuthId = null): array
+    {
+        return $this->send('POST', 'api/v1/bookings/'.rawurlencode($bookingId).'/call-link', array_filter(['tool' => $tool, 'host' => $hostAuthId], fn ($v) => $v !== null));
+    }
+
     public function holidays(string $region, int $year, array $include = []): array
     {
         $query = ['year' => $year] + ($include === [] ? [] : ['include' => implode(',', $include)]);

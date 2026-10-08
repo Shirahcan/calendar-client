@@ -130,7 +130,7 @@ interface CalendarClient
 
     // Calendar connections (the person's, shared by every product)
 
-    /** @param 'google'|'microsoft' $provider */
+    /** @param 'google'|'microsoft'|'zoom' $provider zoom is a call tool, not a calendar */
     public function connectUrl(string $hostAuthId, string $provider, string $returnUrl): string;
 
     /** @return list<array> */
@@ -139,6 +139,21 @@ interface CalendarClient
     public function updateConnection(int $connectionId, string $hostAuthId, ?array $busyCalendars = null, ?string $writeCalendar = null): array;
 
     public function disconnect(int $connectionId, string $hostAuthId): array;
+
+    // Call tools (the person's own Zoom) and a booking's call link
+
+    /** @return list<array{id: int, host: string, tool: string, account_email: ?string, status: string, last_error: ?string}> */
+    public function callTools(string $hostAuthId): array;
+
+    public function disconnectCallTool(int $callToolId, string $hostAuthId): array;
+
+    /**
+     * The booking's call link on the host's own tool, made once (asking again returns it).
+     *
+     * @param 'zoom'|'google_meet' $tool
+     * @return array{booking_id: string, tool: string, url: string}
+     */
+    public function callLink(string $bookingId, string $tool, ?string $hostAuthId = null): array;
 
     /**
      * Hand over existing connections (D6), 1 to 200 rows of {host_auth_id, provider,

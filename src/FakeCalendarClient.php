@@ -413,6 +413,47 @@ class FakeCalendarClient implements CalendarClient
         return ['id' => $connectionId];
     }
 
+    /** @var array<string, list<array>> host => the call tools the test says they connected */
+    public array $callTools = [];
+
+    public function callTools(string $hostAuthId): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        return $this->callTools[$hostAuthId] ?? [];
+    }
+
+    public function disconnectCallTool(int $callToolId, string $hostAuthId): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $this->callTools[$hostAuthId] = array_values(array_filter($this->callTools[$hostAuthId] ?? [], fn ($t) => ($t['id'] ?? null) !== $callToolId));
+
+        return ['id' => $callToolId, 'status' => 'revoked'];
+    }
+
+    /** @var array<string, array> booking id => its call link */
+    public array $callLinks = [];
+
+    public function callLink(string $bookingId, string $tool, ?string $hostAuthId = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $b = $this->find($bookingId);
+        if (! in_array($b['state'], [Booking::CONFIRMED, Booking::PENDING], true)) {
+            throw new CalendarRequestRejected("A booking that is {$b['state']} cannot get a call link.", 'invalid_state', 422);
+        }
+        $hosts = (array) ($b['hosts'] ?? []);
+        $host = $hostAuthId ?? ($hosts[0] ?? null);
+        $connected = $tool === 'google_meet' || array_filter($this->callTools[$host] ?? [], fn ($t) => ($t['tool'] ?? null) === $tool && ($t['status'] ?? 'active') === 'active') !== [];
+        if (! $connected) {
+            throw new CalendarRequestRejected('This host has not connected Zoom.', 'not_connected', 422);
+        }
+
+        return $this->callLinks[$bookingId] ??= [
+            'booking_id' => $bookingId, 'tool' => $tool,
+            'url' => $tool === 'zoom' ? "https://zoom.us/j/{$bookingId}" : "https://meet.google.com/{$bookingId}",
+        ];
+    }
+
     public function disconnect(int $connectionId, string $hostAuthId): array
     {
         $this->log(__FUNCTION__, func_get_args());
