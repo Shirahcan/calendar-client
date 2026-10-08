@@ -155,6 +155,19 @@ class FakeCalendarClient implements CalendarClient
         return $this->links[$ref];
     }
 
+    public function seedLinks(string $hostAuthId, ?string $scheduleRef = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        if ($this->links($hostAuthId) === []) {
+            $seeds = (array) (($this->schedulingPolicy ?? [])['seed_links'] ?? self::SCHEDULING_DEFAULTS['seed_links']);
+            foreach ($seeds as $seed) {
+                $this->createLink($hostAuthId, ['name' => $seed['name'], 'duration' => (int) $seed['duration'], 'is_default' => (bool) ($seed['is_default'] ?? false)]);
+            }
+        }
+
+        return $this->links($hostAuthId);
+    }
+
     public function setDefaultLink(string $ref): array
     {
         $this->log(__FUNCTION__, func_get_args());
@@ -189,7 +202,7 @@ class FakeCalendarClient implements CalendarClient
             'color' => $f['color'] ?? null,
             'slug' => is_string($slug) && $slug !== '' ? $slug : ($fromName !== '' ? $fromName : 'link'),
             'is_active' => (bool) ($f['is_active'] ?? true), 'is_default' => (bool) ($f['is_default'] ?? false),
-            'external_url' => $f['external_url'] ?? null, 'duration' => (int) $f['duration'],
+            'external_url' => $f['external_url'] ?? null, 'external_call_url' => $f['external_call_url'] ?? null, 'duration' => (int) $f['duration'],
             'buffer_before' => $f['buffer_before'] ?? null, 'buffer_after' => $f['buffer_after'] ?? null,
             'daily_cap' => $f['daily_cap'] ?? null, 'days_ahead' => $f['days_ahead'] ?? null,
         ];
@@ -685,6 +698,7 @@ class FakeCalendarClient implements CalendarClient
         'default_duration_minutes' => 60,
         'duration_choices' => [15, 30, 45, 60, 90],
         'session_lengths' => ['quick_question' => 15, 'standard' => 30, 'extended' => 60, 'business' => 60],
+        'seed_links' => [['name' => 'Consultation', 'duration' => 30, 'is_default' => true]],
     ];
 
     /** What the fake server can connect (the real one leaves out apps with no credentials). */

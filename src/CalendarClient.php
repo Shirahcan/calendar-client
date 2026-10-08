@@ -50,13 +50,13 @@ interface CalendarClient
      * A host's links as the service reads them back. buffer_* null = the host's usual buffer;
      * days_ahead null = the policy's horizon; daily_cap null = no limit.
      *
-     * @return list<array{ref: string, host: string, name: string, description: ?string, color: ?string, slug: string, is_active: bool, is_default: bool, external_url: ?string, duration: ?int, buffer_before: ?int, buffer_after: ?int, daily_cap: ?int, days_ahead: ?int}>
+     * @return list<array{ref: string, host: string, name: string, description: ?string, color: ?string, slug: string, is_active: bool, is_default: bool, external_url: ?string, external_call_url: ?string, duration: ?int, buffer_before: ?int, buffer_after: ?int, daily_cap: ?int, days_ahead: ?int}>
      */
     public function links(string $hostAuthId): array;
 
     /**
      * @param  array<string, mixed>  $fields  name and duration required; description, color, slug, is_active,
-     *                                        is_default, external_url, buffer_before, buffer_after, daily_cap, days_ahead,
+     *                                        is_default, external_url, external_call_url, buffer_before, buffer_after, daily_cap, days_ahead,
      *                                        schedule, ref optional
      *
      * @throws Exceptions\CalendarRequestRejected with every reason in `errors`
@@ -67,6 +67,9 @@ interface CalendarClient
     public function updateLink(string $ref, array $fields): array;
 
     public function setDefaultLink(string $ref): array;
+
+    /** The policy's starting links (`seed_links`) for a host who has none; a host with links keeps them. */
+    public function seedLinks(string $hostAuthId, ?string $scheduleRef = null): array;
 
     public function deleteLink(string $ref): void;
 
