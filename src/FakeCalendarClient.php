@@ -188,12 +188,13 @@ class FakeCalendarClient implements CalendarClient
 
     public function approve(string $bookingId, ?string $actor = null): Booking
     {
-        return $this->move($bookingId, [Booking::PENDING], Booking::CONFIRMED);
+        // As the service: approving a booking that is already confirmed changes nothing.
+        return $this->move($bookingId, [Booking::PENDING, Booking::CONFIRMED], Booking::CONFIRMED);
     }
 
     public function decline(string $bookingId, ?string $actor = null, ?string $reason = null): Booking
     {
-        return $this->move($bookingId, [Booking::PENDING], Booking::DECLINED);
+        return $this->move($bookingId, [Booking::PENDING, Booking::DECLINED], Booking::DECLINED);
     }
 
     public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false): Booking
