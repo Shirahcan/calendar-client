@@ -158,6 +158,15 @@ interface CalendarClient
      */
     public function markAttendanceFor(string $bookingId, string $role, string $status, array $who = [], ?string $actor = null): array;
 
+    /**
+     * A participant's answer to a live booking, by role (accepted = they confirmed they will
+     * attend). A booking without them gains them from `$who`.
+     *
+     * @param 'accepted'|'declined'|'pending' $response
+     * @param array{auth_id?: ?string, email?: ?string, name?: ?string} $who
+     */
+    public function respond(string $bookingId, string $role, string $response, array $who = [], ?string $reason = null, ?string $actor = null): array;
+
     /** The meeting happened and is over (confirmed -> completed, once started; idempotent). */
     public function complete(string $bookingId, ?string $actor = null): Booking;
 

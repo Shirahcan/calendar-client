@@ -39,6 +39,14 @@ interface HeldBookingSubject extends BookingSubject
      */
     public function outcome(Model $m): ?array;
 
+    /**
+     * A participant's answer the record's change carries (the client confirming they will
+     * attend), or null: `role`, `response` (accepted/declined/pending), `who`, `reason`.
+     *
+     * @return array{role: string, response: string, who?: array, reason?: ?string}|null
+     */
+    public function response(Model $m): ?array;
+
     /** Why the record stopped occupying time (sent with the cancel or decline). */
     public function cancelReason(Model $m): ?string;
 

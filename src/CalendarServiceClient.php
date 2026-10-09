@@ -273,6 +273,14 @@ class CalendarServiceClient implements CalendarClient
         ], fn ($v) => $v !== null));
     }
 
+    public function respond(string $bookingId, string $role, string $response, array $who = [], ?string $reason = null, ?string $actor = null): array
+    {
+        return $this->send('POST', 'api/v1/bookings/'.rawurlencode($bookingId).'/respond', array_filter([
+            'role' => $role, 'response' => $response, 'auth_id' => $who['auth_id'] ?? null, 'email' => $who['email'] ?? null,
+            'name' => $who['name'] ?? null, 'reason' => $reason, 'actor' => $actor,
+        ], fn ($v) => $v !== null));
+    }
+
     public function complete(string $bookingId, ?string $actor = null): Booking
     {
         return $this->bookingAction($bookingId, 'complete', ['actor' => $actor]);

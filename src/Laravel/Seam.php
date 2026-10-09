@@ -102,6 +102,12 @@ class Seam
         return $this->call(fn () => $this->client()->decline($bookingId, $actor, $reason));
     }
 
+    /** A participant's answer to the booking (accepted = they confirmed they will attend). */
+    public function respond(string $bookingId, string $role, string $response, array $who = [], ?string $reason = null, ?string $actor = null): array
+    {
+        return $this->call(fn () => $this->client()->respond($bookingId, $role, $response, $who, $reason, $actor));
+    }
+
     /** The meeting is over (the product says so before the service's sweep does). */
     public function complete(string $bookingId, ?string $actor = null): Booking
     {

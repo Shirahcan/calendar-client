@@ -65,7 +65,7 @@ class HeldMeetingSubject extends AbstractBookingSubject implements HeldBookingSu
 
     public function occupies(Model $m): bool
     {
-        return in_array($m->getAttributes()['status'] ?? null, ['pending', 'scheduled'], true);
+        return in_array($m->getAttributes()['status'] ?? null, ['pending', 'scheduled', 'confirmed'], true);
     }
 
     public function start(Model $m): CarbonInterface
@@ -117,7 +117,7 @@ class HeldMeetingSubject extends AbstractBookingSubject implements HeldBookingSu
         return [
             'status' => match ($b->state) {
                 Booking::PENDING => 'pending',
-                Booking::CONFIRMED => 'scheduled',
+                Booking::CONFIRMED => collect($b->participants)->contains(fn ($p) => $p['role'] === 'booker' && ($p['response'] ?? null) === 'accepted') ? 'confirmed' : 'scheduled',
                 Booking::COMPLETED => $noShow ? 'no_show' : 'completed',
                 default => 'cancelled',
             },
@@ -135,6 +135,13 @@ class HeldMeetingSubject extends AbstractBookingSubject implements HeldBookingSu
             'no_show' => ['complete' => true, 'attendance' => 'no_show', 'role' => 'booker', 'who' => ['auth_id' => 'client-1']],
             default => null,
         };
+    }
+
+    public function response(Model $m): ?array
+    {
+        return ($m->getAttributes()['status'] ?? null) === 'confirmed' && $m->getRawOriginal('status') !== 'confirmed'
+            ? ['role' => 'booker', 'response' => 'accepted', 'who' => ['auth_id' => 'client-1']]
+            : null;
     }
 
     public function cancelReason(Model $m): ?string
@@ -301,6 +308,19 @@ class HeldRecordTest extends TestCase
 
         $read->update(['status' => 'completed']);   // they did come after all
         $this->assertSame('completed', $this->fresh($m)->status);
+    }
+
+    public function test_the_client_confirming_is_their_answer_on_the_booking(): void
+    {
+        $m = $this->fresh($this->book());
+
+        $m->update(['status' => 'confirmed']);
+
+        $this->assertSame('accepted', $this->fake->bookings[$m->calendar_booking_id]['participants'][0]['response']);
+        $this->assertSame('confirmed', $this->fresh($m)->status);
+
+        $born = $this->book(['status' => 'confirmed', 'starts_at' => '2026-10-08 15:00:00', 'ends_at' => '2026-10-08 15:30:00']);
+        $this->assertSame('confirmed', $this->fresh($born)->status);
     }
 
     public function test_a_pending_meeting_is_approved_or_declined_there(): void

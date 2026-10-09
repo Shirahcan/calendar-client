@@ -112,7 +112,12 @@ abstract class AuthorityObserver
         $booking = (new Seam())->createMeeting($hosts, $s->start($m), $s->end($m), $ref, $details);
         $m->setAttribute($col, $booking->id);
         if ($held) {
-            app(HeldBookings::class)->put($booking);
+            if (($r = $s->response($m)) !== null) {
+                (new Seam())->respond($booking->id, $r['role'], $r['response'], (array) ($r['who'] ?? []), $r['reason'] ?? null, $s->actor());
+                app(HeldBookings::class)->forget($booking->id);
+            } else {
+                app(HeldBookings::class)->put($booking);
+            }
         }
 
         // If the insert below fails (or its transaction rolls back), this gives the time back.
@@ -297,6 +302,10 @@ abstract class AuthorityObserver
             if ($m->isDirty($s->detailAttributes())) {
                 $d = $s->details($m);
                 $last = $seam->describe($id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null);
+            }
+            if (($r = $s->response($m)) !== null) {
+                $seam->respond($id, $r['role'], $r['response'], (array) ($r['who'] ?? []), $r['reason'] ?? null, $s->actor());
+                $last = null;   // participants changed: read it again
             }
         } finally {
             $cache->forget($id);

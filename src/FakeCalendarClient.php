@@ -509,6 +509,35 @@ class FakeCalendarClient implements CalendarClient
         return $p;
     }
 
+    public function respond(string $bookingId, string $role, string $response, array $who = [], ?string $reason = null, ?string $actor = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $b = $this->find($bookingId);
+        if (! in_array($b['state'], [Booking::PENDING, Booking::CONFIRMED], true)) {
+            throw new CalendarRequestRejected("A booking that is {$b['state']} cannot be answered.", 'invalid_state', 409);
+        }
+        $participants = array_values((array) ($b['participants'] ?? []));
+        foreach ($participants as $i => $p) {
+            if (($p['role'] ?? null) === $role) {
+                $participants[$i]['response'] = $response;
+                $participants[$i]['response_reason'] = $reason;
+                $b['participants'] = $participants;
+                $this->save($b);
+
+                return $participants[$i];
+            }
+        }
+        if (empty($who['auth_id']) && empty($who['email'])) {
+            throw new CalendarNotFound("This booking has no {$role}; say who they are (auth_id or email).", null, 404);
+        }
+        $p = ['id' => $this->participantId(), 'auth_id' => $who['auth_id'] ?? null, 'email' => $who['email'] ?? null,
+            'name' => $who['name'] ?? null, 'role' => $role, 'attendance' => null, 'response' => $response, 'response_reason' => $reason];
+        $b['participants'] = [...$participants, $p];
+        $this->save($b);
+
+        return $p;
+    }
+
     public function complete(string $bookingId, ?string $actor = null): Booking
     {
         $this->log(__FUNCTION__, func_get_args());
