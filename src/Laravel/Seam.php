@@ -102,6 +102,31 @@ class Seam
         return $this->call(fn () => $this->client()->decline($bookingId, $actor, $reason));
     }
 
+    /** The meeting is over (the product says so before the service's sweep does). */
+    public function complete(string $bookingId, ?string $actor = null): Booking
+    {
+        return $this->call(fn () => $this->client()->complete($bookingId, $actor));
+    }
+
+    /**
+     * Whether the person in `$role` came. A booking without them gains them from `$who`.
+     *
+     * @param array{auth_id?: ?string, email?: ?string, name?: ?string} $who
+     */
+    public function attendance(string $bookingId, string $role, string $status, array $who = [], ?string $actor = null): array
+    {
+        return $this->call(fn () => $this->client()->markAttendanceFor($bookingId, $role, $status, $who, $actor));
+    }
+
+    /**
+     * A record that already ENDED (completed, cancelled) handed to the service as it is: its past
+     * time, its state, its people and its history, never re-checked against anyone's busy time.
+     */
+    public function import(array $meeting): Booking
+    {
+        return $this->call(fn () => $this->client()->importBooking($meeting));
+    }
+
     /**
      * A booking the product writes outside a hold (a host's own meeting, an admin's call):
      * busy-only check on everyone it keeps busy, confirmed at once. `$ref` is the product's

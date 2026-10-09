@@ -27,6 +27,11 @@ use Shirahcan\CalendarClient\Laravel\Seam;
  * - deleted: cancelled. Ending never blocks on the service (CancelBooking retries).
  * - people joining or leaving follow it (SyncHosts); its calendar copy follows it (PushDetails).
  *
+ * A HeldBookingSubject goes further: the service is the ONLY place its facts live (the product's
+ * row is a handle, see HeldInCalendarService). Its details and people are sent with the create;
+ * a record created already ended is handed over as history; ending, completing and attendance are
+ * sent synchronously and a refusal stops the write, because no product copy would remember it.
+ *
  * ⚠ Synchronous on purpose: an asynchronous write would let a record land on a time the service
  * then refuses, which is the double-booking the service exists to end.
  *
@@ -68,7 +73,8 @@ abstract class AuthorityObserver
     {
         $s = $this->subject();
         $col = $s->column();
-        if (! $s->enabled() || $m->getAttribute($col) || ! $s->occupies($m)) {
+        $held = $s instanceof HeldBookingSubject;
+        if (! $s->enabled() || $m->getAttribute($col) || (! $held && ! $s->occupies($m))) {
             return;
         }
         $hosts = $s->hosts($m);
@@ -77,8 +83,27 @@ abstract class AuthorityObserver
         }
 
         $ref = $s->ref($m);
+        if ($held && ! $s->occupies($m)) {
+            // Already over when written (a past call recorded after the fact): history, not time.
+            $state = $s->endedState($m) ?? throw new \LogicException(class_basename($m).' was written already ended, and its subject names no state to hand the service.');
+            $booking = (new Seam())->import(array_filter([
+                'idempotency_key' => $ref, 'product_ref' => $ref, 'hosts' => $hosts, 'state' => $state,
+                'start' => $s->start($m)->toIso8601ZuluString(), 'end' => $s->end($m)->toIso8601ZuluString(),
+                'participants' => $s->participants($m), 'cancel_reason' => $s->cancelReason($m),
+            ] + $s->details($m), fn ($v) => $v !== null));
+            $m->setAttribute($col, $booking->id);
+            app(HeldBookings::class)->put($booking);
+
+            return;
+        }
+
+        $details = $held ? array_filter($s->details($m) + ['participants' => $s->participants($m)], fn ($v) => $v !== null) : [];
         // Throws Refusal: the record is not written.
-        $m->setAttribute($col, (new Seam())->createMeeting($hosts, $s->start($m), $s->end($m), $ref)->id);
+        $booking = (new Seam())->createMeeting($hosts, $s->start($m), $s->end($m), $ref, $details);
+        $m->setAttribute($col, $booking->id);
+        if ($held) {
+            app(HeldBookings::class)->put($booking);
+        }
 
         // If the insert below fails (or its transaction rolls back), this gives the time back.
         // Not on `sync`: it would run NOW, before the insert, and cancel a good booking.
@@ -95,7 +120,9 @@ abstract class AuthorityObserver
     {
         $s = $this->subject();
         if ($s->enabled() && $m->getAttribute($s->column())) {
-            PushDetails::enqueue($this->subjectClass(), $m->getKey());
+            if (! $s instanceof HeldBookingSubject) {
+                PushDetails::enqueue($this->subjectClass(), $m->getKey());   // held: sent with the create
+            }
             // A booking confirmed from a hold has the booking type's members as hosts: bring in
             // everyone the record keeps busy.
             SyncHosts::enqueue($this->subjectClass(), $m->getKey());
@@ -109,7 +136,13 @@ abstract class AuthorityObserver
             return;
         }
 
-        $was = (clone $m)->setRawAttributes($m->getOriginal());
+        if ($s instanceof HeldBookingSubject && $m->getAttribute($s->column())) {
+            $this->updatingHeld($s, $m);
+
+            return;
+        }
+
+        $was = (clone $m)->setRawAttributes($m->getRawOriginal());
         $occupiedBefore = $s->occupies($was);
         $occupiesNow = $s->occupies($m);
         $moved = $m->isDirty($s->moveAttributes());
@@ -168,8 +201,8 @@ abstract class AuthorityObserver
         if (! $s->enabled() || ! $m->getAttribute($s->column())) {
             return;
         }
-        if ($m->wasChanged(array_merge($s->detailAttributes(), $s->peopleAttributes(), [$s->column()]))) {
-            PushDetails::enqueue($this->subjectClass(), $m->getKey());
+        if (! $s instanceof HeldBookingSubject && $m->wasChanged(array_merge($s->detailAttributes(), $s->peopleAttributes(), [$s->column()]))) {
+            PushDetails::enqueue($this->subjectClass(), $m->getKey());   // held: sent in updating
         }
         if ($m->wasChanged($s->peopleAttributes())) {
             SyncHosts::enqueue($this->subjectClass(), $m->getKey());
@@ -182,6 +215,91 @@ abstract class AuthorityObserver
         if ($s->enabled() && ($id = $m->getAttribute($s->column()))) {
             $this->quietly(fn () => (new Seam())->cancel($id, 'product', $s->actor().'-deleted'), $id);
         }
+    }
+
+    /**
+     * A held record's change, sent FIRST and in full: nothing the product keeps would remember a
+     * change the service did not take, so every refusal (Refusal) stops the write.
+     */
+    private function updatingHeld(HeldBookingSubject $s, Model $m): void
+    {
+        $id = (string) $m->getAttribute($s->column());
+        $seam = new Seam();
+        $cache = app(HeldBookings::class);
+        $was = (clone $m)->setRawAttributes($m->getRawOriginal());
+        $occupiedBefore = $s->occupies($was);
+        $occupiesNow = $s->occupies($m);
+        $approval = $s->approval($m);
+        $last = null;
+
+        try {
+            if ($occupiedBefore && ! $occupiesNow) {
+                $outcome = $s->outcome($m);
+                if ($outcome !== null) {
+                    $last = $this->conclude($seam, $s, $m, $id, $outcome);
+                } elseif ($approval === 'decline') {
+                    $last = $seam->decline($id, $s->actor(), $s->cancelReason($m));
+                } else {
+                    $seam->cancel($id, 'product', $s->actor(), $s->cancelReason($m));
+                }
+
+                return;
+            }
+
+            if (! $occupiedBefore && $occupiesNow) {
+                // Reopened: its old booking ended, so it is booked afresh (Refusal when taken).
+                $hosts = $s->hosts($m);
+                if ($hosts !== []) {
+                    $last = $seam->createMeeting($hosts, $s->start($m), $s->end($m), $s->ref($m),
+                        array_filter($s->details($m) + ['participants' => $s->participants($m)], fn ($v) => $v !== null),
+                        $s->ref($m).':reopened:'.now()->getTimestamp());
+                    $m->setAttribute($s->column(), $last->id);
+                }
+
+                return;
+            }
+
+            if (! $occupiesNow) {
+                // Already over: only a changed outcome (attendance corrected after the fact).
+                $outcome = $s->outcome($m);
+                if ($outcome !== null) {
+                    $last = $this->conclude($seam, $s, $m, $id, $outcome);
+                }
+
+                return;
+            }
+
+            if ($m->isDirty($s->moveAttributes())) {
+                $last = $seam->reschedule($id, $s->start($m), $s->end($m), true, $s->actor());
+            }
+            if ($approval === 'approve') {
+                $last = $seam->approve($id, $s->actor());
+            }
+            if ($m->isDirty($s->detailAttributes())) {
+                $d = $s->details($m);
+                $last = $seam->describe($id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null);
+            }
+        } finally {
+            $cache->forget($id);
+            if ($last !== null) {
+                $cache->put($last);
+            }
+        }
+    }
+
+    /** It ended: completed (once started), then whether the person came. */
+    private function conclude(Seam $seam, HeldBookingSubject $s, Model $m, string $id, array $outcome): ?\Shirahcan\CalendarClient\Booking
+    {
+        $booking = null;
+        if ($outcome['complete'] ?? false) {
+            $booking = $seam->complete($id, $s->actor());
+        }
+        if (($outcome['attendance'] ?? null) !== null) {
+            $seam->attendance($id, $outcome['role'] ?? 'booker', $outcome['attendance'], (array) ($outcome['who'] ?? []), $s->actor());
+            $booking = null;   // participants changed: read it again
+        }
+
+        return $booking;
     }
 
     /** Ending never blocks on the service: the time only stays busy (safe), and is retried. */

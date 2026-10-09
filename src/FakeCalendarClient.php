@@ -251,7 +251,7 @@ class FakeCalendarClient implements CalendarClient
             'start_utc' => $this->iso(new DateTimeImmutable((string) $meeting['start'])),
             'end_utc' => $this->iso(new DateTimeImmutable((string) $meeting['end'])),
             'hold_expires_at' => null, 'hosts' => array_values((array) $meeting['hosts']),
-            'participants' => array_values((array) ($meeting['participants'] ?? [])),
+            'participants' => $this->withParticipantIds((array) ($meeting['participants'] ?? [])),
             'title' => $meeting['title'] ?? null, 'description' => $meeting['description'] ?? null,
             'location' => $meeting['location'] ?? null, 'cancelled_by' => $meeting['cancelled_by'] ?? null,
             'cancel_reason' => $meeting['cancel_reason'] ?? null, 'created_at' => $meeting['created_at'] ?? null,
@@ -468,8 +468,73 @@ class FakeCalendarClient implements CalendarClient
     public function markAttendance(string $bookingId, int $participantId, string $status, ?string $actor = null): array
     {
         $this->log(__FUNCTION__, func_get_args());
+        if (isset($this->bookings[$bookingId])) {
+            foreach ($this->bookings[$bookingId]['participants'] as $i => $p) {
+                if (($p['id'] ?? null) === $participantId) {
+                    $this->bookings[$bookingId]['participants'][$i]['attendance'] = $status;
+
+                    return $this->bookings[$bookingId]['participants'][$i];
+                }
+            }
+        }
 
         return ['id' => $participantId, 'attendance' => $status];
+    }
+
+    public function markAttendanceFor(string $bookingId, string $role, string $status, array $who = [], ?string $actor = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $b = $this->find($bookingId);
+        if (! in_array($b['state'], [Booking::CONFIRMED, Booking::COMPLETED], true)) {
+            throw new CalendarRequestRejected("A booking that is {$b['state']} cannot be given attendance.", 'invalid_state', 409);
+        }
+        $participants = array_values((array) ($b['participants'] ?? []));
+        foreach ($participants as $i => $p) {
+            if (($p['role'] ?? null) === $role) {
+                $participants[$i]['attendance'] = $status;
+                $b['participants'] = $participants;
+                $this->save($b);
+
+                return $participants[$i];
+            }
+        }
+        if (empty($who['auth_id']) && empty($who['email'])) {
+            throw new CalendarNotFound("This booking has no {$role}; say who they are (auth_id or email).", null, 404);
+        }
+        $p = ['id' => $this->participantId(), 'auth_id' => $who['auth_id'] ?? null, 'email' => $who['email'] ?? null,
+            'name' => $who['name'] ?? null, 'role' => $role, 'attendance' => $status];
+        $b['participants'] = [...$participants, $p];
+        $this->save($b);
+
+        return $p;
+    }
+
+    public function complete(string $bookingId, ?string $actor = null): Booking
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $b = $this->find($bookingId);
+        if ($b['state'] === Booking::COMPLETED) {
+            return Booking::fromArray($b);
+        }
+        if ((new DateTimeImmutable($b['start_utc'])) > $this->now()) {
+            throw new CalendarRequestRejected('A booking can only be completed once it has started.', 'invalid', 422);
+        }
+
+        return $this->move($bookingId, [Booking::CONFIRMED], Booking::COMPLETED);
+    }
+
+    private int $participantSeq = 0;
+
+    /** Participants carry ids, as the service's do. */
+    private function participantId(): int
+    {
+        return ++$this->participantSeq;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function withParticipantIds(array $participants): array
+    {
+        return array_map(fn ($p) => ['id' => $p['id'] ?? $this->participantId(), 'attendance' => $p['attendance'] ?? null] + (array) $p, array_values($participants));
     }
 
     public function createMeeting(array $hostAuthIds, DateTimeInterface $start, DateTimeInterface $end, string $idempotencyKey, array $details = []): Booking
@@ -490,7 +555,10 @@ class FakeCalendarClient implements CalendarClient
 
         return $this->save([
             'id' => $id, 'state' => Booking::CONFIRMED, 'kind' => 'host_created', 'start_utc' => $this->iso(DateTimeImmutable::createFromInterface($start)),
-            'end_utc' => $this->iso(DateTimeImmutable::createFromInterface($end)), 'hosts' => $hostAuthIds, 'participants' => $details['participants'] ?? [],
+            'end_utc' => $this->iso(DateTimeImmutable::createFromInterface($end)), 'hosts' => $hostAuthIds,
+            'participants' => $this->withParticipantIds($details['participants'] ?? []),
+            'product_ref' => $details['product_ref'] ?? null, 'title' => $details['title'] ?? null,
+            'description' => $details['description'] ?? null, 'location' => $details['location'] ?? null,
             'idempotency_key' => $idempotencyKey, 'hold_expires_at' => null, 'open_proposal' => null,
         ]);
     }
@@ -554,7 +622,7 @@ class FakeCalendarClient implements CalendarClient
     {
         $this->log(__FUNCTION__, func_get_args());
         $b = $this->find($bookingId);
-        foreach (['title' => $title, 'location' => $location] as $k => $v) {
+        foreach (['title' => $title, 'description' => $description, 'location' => $location] as $k => $v) {
             if ($v !== null) {
                 $b[$k] = $v;
             }

@@ -148,6 +148,19 @@ interface CalendarClient
     /** @param 'attended'|'no_show'|'late' $status */
     public function markAttendance(string $bookingId, int $participantId, string $status, ?string $actor = null): array;
 
+    /**
+     * Attendance for the participant in a ROLE (usually the booker). A booking without one gains
+     * them from `$who` (auth_id / email / name), so a no-show can always be recorded.
+     *
+     * @param 'booker'|'attendee'|'guest' $role
+     * @param 'attended'|'no_show'|'late' $status
+     * @param array{auth_id?: ?string, email?: ?string, name?: ?string} $who
+     */
+    public function markAttendanceFor(string $bookingId, string $role, string $status, array $who = [], ?string $actor = null): array;
+
+    /** The meeting happened and is over (confirmed -> completed, once started; idempotent). */
+    public function complete(string $bookingId, ?string $actor = null): Booking;
+
     /** A host's own meeting: no booking type, busy-only check, confirmed at once. @param list<string> $hostAuthIds */
     public function createMeeting(array $hostAuthIds, DateTimeInterface $start, DateTimeInterface $end, string $idempotencyKey, array $details = []): Booking;
 

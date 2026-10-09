@@ -10,6 +10,9 @@ class CalendarClientServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/calendar-client.php', 'calendar-client');
 
+        // The bookings one request has read (HeldInCalendarService): never outlives the request.
+        $this->app->scoped(\Shirahcan\CalendarClient\Laravel\Bookings\HeldBookings::class);
+
         $this->app->singleton(CalendarClient::class, function () {
             $key = (string) config('calendar-client.trust_key', '');
 
