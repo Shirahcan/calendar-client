@@ -55,6 +55,15 @@ interface CalendarClient
     public function links(string $hostAuthId): array;
 
     /**
+     * Several hosts' links in one call (a list of consultants), grouped by host; every host asked
+     * for is a key, with an empty list when they have none.
+     *
+     * @param  list<string>  $hostAuthIds
+     * @return array<string, list<array>>
+     */
+    public function linksFor(array $hostAuthIds): array;
+
+    /**
      * @param  array<string, mixed>  $fields  name and duration required; description, color, slug, is_active,
      *                                        is_default, external_url, external_call_url, buffer_before, buffer_after, daily_cap, days_ahead,
      *                                        schedule, ref optional

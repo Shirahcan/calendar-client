@@ -125,6 +125,17 @@ class FakeCalendarClient implements CalendarClient
         return $rows;
     }
 
+    public function linksFor(array $hostAuthIds): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $out = [];
+        foreach ($hostAuthIds as $host) {
+            $out[$host] = $this->links($host);
+        }
+
+        return $out;
+    }
+
     public function createLink(string $hostAuthId, array $fields): array
     {
         $this->log(__FUNCTION__, func_get_args());

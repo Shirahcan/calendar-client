@@ -82,6 +82,16 @@ class CalendarServiceClient implements CalendarClient
         return array_values($this->send('GET', 'api/v1/hosts/'.rawurlencode($hostAuthId).'/links'));
     }
 
+    public function linksFor(array $hostAuthIds): array
+    {
+        $out = [];
+        foreach (array_chunk(array_values(array_unique($hostAuthIds)), 500) as $chunk) {
+            $out += array_map('array_values', $this->send('GET', 'api/v1/links', ['hosts' => $chunk]));
+        }
+
+        return $out;
+    }
+
     public function createLink(string $hostAuthId, array $fields): array
     {
         return $this->send('POST', 'api/v1/hosts/'.rawurlencode($hostAuthId).'/links', $fields);

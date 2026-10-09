@@ -236,6 +236,8 @@ class ClientTest extends TestCase
         $this->assertCount(2, $fake->seedLinks('auth-1'), 'a host with links keeps them');
         $this->assertSame(['Consultation'], array_column($fake->seedLinks('auth-2'), 'name'));
 
+        $this->assertSame([1, 0], [count($fake->linksFor(['auth-1', 'auth-9'])['auth-1']) > 0 ? 1 : 0, count($fake->linksFor(['auth-1', 'auth-9'])['auth-9'])]);
+
         $fake->deleteLink($b);
         $this->assertTrue($fake->links[$a]['is_default'], 'the default passes on');
     }
