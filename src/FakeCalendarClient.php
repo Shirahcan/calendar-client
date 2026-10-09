@@ -675,7 +675,7 @@ class FakeCalendarClient implements CalendarClient
         $id = sprintf('%08x-0000-4000-9000-%012x', count($this->bookings) + 1, random_int(0, 0xFFFFFFFFFFFF));
 
         return $this->save([
-            'id' => $id, 'state' => Booking::CONFIRMED, 'kind' => 'host_created', 'start_utc' => $this->iso(DateTimeImmutable::createFromInterface($start)),
+            'id' => $id, 'state' => empty($details['pending']) ? Booking::CONFIRMED : Booking::PENDING, 'kind' => 'host_created', 'start_utc' => $this->iso(DateTimeImmutable::createFromInterface($start)),
             'end_utc' => $this->iso(DateTimeImmutable::createFromInterface($end)), 'hosts' => $hostAuthIds,
             'participants' => $this->withParticipantIds($details['participants'] ?? []),
             'product_ref' => $details['product_ref'] ?? null, 'title' => $details['title'] ?? null,

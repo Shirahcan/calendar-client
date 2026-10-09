@@ -107,7 +107,7 @@ abstract class AuthorityObserver
             return;
         }
 
-        $details = $held ? array_filter($s->details($m) + ['participants' => $s->participants($m)], fn ($v) => $v !== null) : [];
+        $details = $held ? array_filter($s->details($m) + ['participants' => $s->participants($m), 'pending' => $s->startsPending($m) ?: null], fn ($v) => $v !== null) : [];
         // Throws Refusal: the record is not written.
         $booking = (new Seam())->createMeeting($hosts, $s->start($m), $s->end($m), $ref, $details);
         $m->setAttribute($col, $booking->id);

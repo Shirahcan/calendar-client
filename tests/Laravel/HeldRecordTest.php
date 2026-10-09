@@ -144,6 +144,11 @@ class HeldMeetingSubject extends AbstractBookingSubject implements HeldBookingSu
             : null;
     }
 
+    public function startsPending(Model $m): bool
+    {
+        return ($m->getAttributes()['status'] ?? null) === 'pending';
+    }
+
     public function cancelReason(Model $m): ?string
     {
         return $m->getAttributes()['reason'] ?? null;
@@ -325,10 +330,9 @@ class HeldRecordTest extends TestCase
 
     public function test_a_pending_meeting_is_approved_or_declined_there(): void
     {
+        // Written pending (a client's request): booked pending, so declining it works.
         $m = $this->fresh($this->book(['status' => 'pending']));
-        // A host-created meeting is confirmed at once; make it pending as a booking flow would.
-        $this->fake->bookings[$m->calendar_booking_id]['state'] = Booking::PENDING;
-        $m = $this->fresh($m);
+        $this->assertSame(Booking::PENDING, $this->fake->bookings[$m->calendar_booking_id]['state']);
         $this->assertSame('pending', $m->status);
 
         $m->update(['status' => 'cancelled', 'reason' => 'Not a fit']);

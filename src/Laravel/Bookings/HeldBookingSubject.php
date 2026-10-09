@@ -47,6 +47,9 @@ interface HeldBookingSubject extends BookingSubject
      */
     public function response(Model $m): ?array;
 
+    /** Created waiting for the host's approval (a client's request): booked pending, approved or declined later. */
+    public function startsPending(Model $m): bool;
+
     /** Why the record stopped occupying time (sent with the cancel or decline). */
     public function cancelReason(Model $m): ?string;
 
