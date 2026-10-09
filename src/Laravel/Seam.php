@@ -73,7 +73,7 @@ class Seam
     public function cancel(string $bookingId, string $by = 'product', ?string $actor = null, ?string $reason = null): void
     {
         try {
-            $this->client()->cancel($bookingId, $by, $actor, $reason);
+            app(Bookings\HeldBookings::class)->put($this->client()->cancel($bookingId, $by, $actor, $reason));
         } catch (CalendarNotFound) {
             // Nothing to cancel there.
         } catch (CalendarRequestRejected $e) {
@@ -105,7 +105,10 @@ class Seam
     /** A participant's answer to the booking (accepted = they confirmed they will attend). */
     public function respond(string $bookingId, string $role, string $response, array $who = [], ?string $reason = null, ?string $actor = null): array
     {
-        return $this->call(fn () => $this->client()->respond($bookingId, $role, $response, $who, $reason, $actor));
+        $answer = $this->call(fn () => $this->client()->respond($bookingId, $role, $response, $who, $reason, $actor));
+        app(Bookings\HeldBookings::class)->forget($bookingId);   // its participants changed
+
+        return $answer;
     }
 
     /** The meeting is over (the product says so before the service's sweep does). */
@@ -121,7 +124,10 @@ class Seam
      */
     public function attendance(string $bookingId, string $role, string $status, array $who = [], ?string $actor = null): array
     {
-        return $this->call(fn () => $this->client()->markAttendanceFor($bookingId, $role, $status, $who, $actor));
+        $answer = $this->call(fn () => $this->client()->markAttendanceFor($bookingId, $role, $status, $who, $actor));
+        app(Bookings\HeldBookings::class)->forget($bookingId);   // its participants changed
+
+        return $answer;
     }
 
     /**
@@ -211,14 +217,24 @@ class Seam
         return $promoted ?? $this->createMeeting($hosts, $s->start($m), $s->end($m), $s->ref($m));
     }
 
-    /** @template T @param callable(): T $fn @return T */
+    /**
+     * Every answer that IS a booking refreshes what this request has read (HeldBookings), so a
+     * write made through the seam is what the next read sees, whoever made it.
+     *
+     * @template T @param callable(): T $fn @return T
+     */
     public function call(callable $fn): mixed
     {
         try {
-            return $fn();
+            $result = $fn();
         } catch (CalendarServiceException $e) {
             throw $this->refusal($e);
         }
+        if ($result instanceof Booking) {
+            app(Bookings\HeldBookings::class)->put($result);
+        }
+
+        return $result;
     }
 
     public function refusal(CalendarServiceException $e): Refusal
