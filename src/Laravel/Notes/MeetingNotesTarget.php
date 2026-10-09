@@ -2,9 +2,11 @@
 
 namespace Shirahcan\CalendarClient\Laravel\Notes;
 
+use Shirahcan\CalendarClient\CalendarClient;
+
 /**
- * The built-in target: file the pad as a note on the meeting itself. A product changes the
- * wording by extending this and overriding label(), or replaces it with targets of its own.
+ * The built-in target: file the pad as a note on the meeting itself (its booking, plan N1). A
+ * product changes the wording by extending this and overriding label(), or adds targets of its own.
  */
 class MeetingNotesTarget implements ScratchpadTarget
 {
@@ -20,19 +22,11 @@ class MeetingNotesTarget implements ScratchpadTarget
 
     public function availableFor(ScratchpadViewer $viewer): bool
     {
-        return true;
+        return $viewer->bookingId !== null;
     }
 
     public function save(ScratchpadViewer $viewer, string $text): void
     {
-        /** @var class-string<\Illuminate\Database\Eloquent\Model> $model */
-        $model = config('calendar-client.scratchpad.note_model', MeetingNote::class);
-
-        $model::create([
-            'meeting_id' => $viewer->meetingId,
-            'user_id' => $viewer->userId,
-            'content' => $text,
-            'is_private' => false,
-        ]);
+        app(CalendarClient::class)->addNote($viewer->booking(), $viewer->userId, $text, 'participants');
     }
 }

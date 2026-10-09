@@ -538,6 +538,101 @@ class FakeCalendarClient implements CalendarClient
         return $p;
     }
 
+    /** @var array<string, array<string, mixed>> note id => note */
+    public array $notes = [];
+
+    /** @var array<string, array<string, mixed>> "booking|author" => pad */
+    public array $drafts = [];
+
+    public function notes(string $bookingId, ?string $viewerAuthId = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $this->find($bookingId);
+
+        return array_values(array_filter($this->notes, fn ($n) => $n['booking_id'] === $bookingId
+            && ($viewerAuthId === null || $n['visibility'] === 'participants' || $n['author_auth_id'] === $viewerAuthId)));
+    }
+
+    public function addNote(string $bookingId, string $authorAuthId, string $content, string $visibility = 'participants', ?string $sourceRef = null, ?array $meta = null, ?DateTimeInterface $createdAt = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $this->find($bookingId);
+        foreach ($this->notes as $n) {
+            if ($sourceRef !== null && $n['booking_id'] === $bookingId && $n['source_ref'] === $sourceRef) {
+                return $n;
+            }
+        }
+        $id = sprintf('%08x-0000-4000-a000-%012x', count($this->notes) + 1, random_int(0, 0xFFFFFFFFFFFF));
+        $at = $this->iso($createdAt === null ? $this->now() : DateTimeImmutable::createFromInterface($createdAt));
+
+        return $this->notes[$id] = ['id' => $id, 'booking_id' => $bookingId, 'author_auth_id' => $authorAuthId, 'content' => $content,
+            'visibility' => $visibility, 'source_ref' => $sourceRef, 'meta' => $meta ?? [], 'created_at' => $at, 'updated_at' => $at];
+    }
+
+    public function updateNote(string $noteId, array $fields): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $n = $this->notes[$noteId] ?? throw new CalendarNotFound('Note not found.', null, 404);
+        foreach (['content', 'visibility'] as $k) {
+            if (array_key_exists($k, $fields)) {
+                $n[$k] = $fields[$k];
+            }
+        }
+        if (is_array($fields['meta'] ?? null)) {
+            $n['meta'] = array_merge((array) $n['meta'], $fields['meta']);
+        }
+        $n['updated_at'] = $this->iso($this->now());
+
+        return $this->notes[$noteId] = $n;
+    }
+
+    public function deleteNote(string $noteId): void
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        if (! isset($this->notes[$noteId])) {
+            throw new CalendarNotFound('Note not found.', null, 404);
+        }
+        unset($this->notes[$noteId]);
+    }
+
+    public function draft(string $bookingId, string $authorAuthId): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $this->find($bookingId);
+
+        return $this->drafts[$bookingId.'|'.$authorAuthId] ?? ['booking_id' => $bookingId, 'author_auth_id' => $authorAuthId, 'content' => '', 'updated_at' => null];
+    }
+
+    public function saveDraft(string $bookingId, string $authorAuthId, string $content): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $this->find($bookingId);
+
+        return $this->drafts[$bookingId.'|'.$authorAuthId] = ['booking_id' => $bookingId, 'author_auth_id' => $authorAuthId, 'content' => $content, 'updated_at' => $this->iso($this->now())];
+    }
+
+    public function discardDraft(string $bookingId, string $authorAuthId): void
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        unset($this->drafts[$bookingId.'|'.$authorAuthId]);
+    }
+
+    public function pendingDrafts(string $authorAuthId): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $out = [];
+        foreach ($this->drafts as $d) {
+            if ($d['author_auth_id'] === $authorAuthId && trim($d['content']) !== '' && isset($this->bookings[$d['booking_id']])) {
+                $b = $this->bookings[$d['booking_id']];
+                $out[] = $d + ['booking' => ['id' => $b['id'], 'product_ref' => $b['product_ref'] ?? null, 'title' => $b['title'] ?? null,
+                    'state' => $b['state'], 'start_utc' => $b['start_utc'], 'end_utc' => $b['end_utc']]];
+            }
+        }
+        usort($out, fn ($a, $b) => strcmp((string) $b['updated_at'], (string) $a['updated_at']));
+
+        return $out;
+    }
+
     public function complete(string $bookingId, ?string $actor = null): Booking
     {
         $this->log(__FUNCTION__, func_get_args());

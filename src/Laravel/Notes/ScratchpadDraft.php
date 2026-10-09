@@ -5,7 +5,7 @@ namespace Shirahcan\CalendarClient\Laravel\Notes;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
-/** One person's live scratchpad for one meeting (unique on the pair). */
+/** LEGACY (plan N1): pads live on the booking now; kept for moving old rows. One person's live scratchpad for one meeting (unique on the pair). */
 class ScratchpadDraft extends Model
 {
     use HasUuids;

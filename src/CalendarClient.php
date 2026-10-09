@@ -167,6 +167,35 @@ interface CalendarClient
      */
     public function respond(string $bookingId, string $role, string $response, array $who = [], ?string $reason = null, ?string $actor = null): array;
 
+    /*
+     * A meeting's notes and scratchpads (plan N1): they belong to its booking.
+     * A note: {id, booking_id, author_auth_id, content, visibility, source_ref, meta, created_at, updated_at}.
+     * A pad: {booking_id, author_auth_id, content, updated_at, booking?}.
+     */
+
+    /** @return list<array<string, mixed>> the booking's notes; with `$viewer`, only what that person may read */
+    public function notes(string $bookingId, ?string $viewerAuthId = null): array;
+
+    /**
+     * @param 'private'|'participants' $visibility
+     * @param string|null $sourceRef the product's own id for an import (idempotent)
+     */
+    public function addNote(string $bookingId, string $authorAuthId, string $content, string $visibility = 'participants', ?string $sourceRef = null, ?array $meta = null, ?DateTimeInterface $createdAt = null): array;
+
+    /** @param array{content?: string, visibility?: string, meta?: array} $fields meta keys merge */
+    public function updateNote(string $noteId, array $fields): array;
+
+    public function deleteNote(string $noteId): void;
+
+    public function draft(string $bookingId, string $authorAuthId): array;
+
+    public function saveDraft(string $bookingId, string $authorAuthId, string $content): array;
+
+    public function discardDraft(string $bookingId, string $authorAuthId): void;
+
+    /** @return list<array<string, mixed>> every pad this person has not filed or discarded, newest first, with its booking */
+    public function pendingDrafts(string $authorAuthId): array;
+
     /** The meeting happened and is over (confirmed -> completed, once started; idempotent). */
     public function complete(string $bookingId, ?string $actor = null): Booking;
 

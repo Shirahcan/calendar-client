@@ -24,15 +24,21 @@ return [
     'callback_secret' => env('CALENDAR_SERVICE_CALLBACK_SECRET', ''),
 
     /*
-    | The scratchpad and meeting notes kit (Laravel\Notes). Stored in THIS product's database.
-    | `access`: the product's ScratchpadAccess (who may use a meeting's pad, and as whom).
+    | The scratchpad and meeting notes kit (Laravel\Notes). Both live on the meeting's booking in
+    | calendar-service (plan N1); the product keeps none of it.
+    | `access`: the product's ScratchpadAccess (who may use a meeting's notes and pad, as whom).
     | `targets`: where the pad can be filed, in the order offered ("save to case" is the
-    | product's own wording). `note_model`: the product's model for meeting_notes, if it has one.
+    | product's own wording). `pad_actions`: PadAction proposals on the pad's text.
+    | `note_actions`: NoteAction items in each note's menu. `pad_context`: the PadContext that
+    | names unsettled pads for the banners. `people`: a PeopleDirectory for author names.
     */
     'scratchpad' => [
         'access' => null,
         'targets' => [\Shirahcan\CalendarClient\Laravel\Notes\MeetingNotesTarget::class],
-        'note_model' => \Shirahcan\CalendarClient\Laravel\Notes\MeetingNote::class,
+        'pad_actions' => [],
+        'note_actions' => [],
+        'pad_context' => null,
+        'people' => null,
         'max_chars' => 60000,
     ],
 

@@ -281,6 +281,49 @@ class CalendarServiceClient implements CalendarClient
         ], fn ($v) => $v !== null));
     }
 
+    public function notes(string $bookingId, ?string $viewerAuthId = null): array
+    {
+        return array_values((array) $this->send('GET', 'api/v1/bookings/'.rawurlencode($bookingId).'/notes', array_filter(['viewer' => $viewerAuthId], fn ($v) => $v !== null)));
+    }
+
+    public function addNote(string $bookingId, string $authorAuthId, string $content, string $visibility = 'participants', ?string $sourceRef = null, ?array $meta = null, ?DateTimeInterface $createdAt = null): array
+    {
+        return $this->send('POST', 'api/v1/bookings/'.rawurlencode($bookingId).'/notes', array_filter([
+            'author_auth_id' => $authorAuthId, 'content' => $content, 'visibility' => $visibility, 'source_ref' => $sourceRef,
+            'meta' => $meta, 'created_at' => $createdAt?->format(DATE_ATOM),
+        ], fn ($v) => $v !== null));
+    }
+
+    public function updateNote(string $noteId, array $fields): array
+    {
+        return $this->send('PATCH', 'api/v1/notes/'.rawurlencode($noteId), array_intersect_key($fields, array_flip(['content', 'visibility', 'meta'])));
+    }
+
+    public function deleteNote(string $noteId): void
+    {
+        $this->send('DELETE', 'api/v1/notes/'.rawurlencode($noteId));
+    }
+
+    public function draft(string $bookingId, string $authorAuthId): array
+    {
+        return $this->send('GET', 'api/v1/bookings/'.rawurlencode($bookingId).'/drafts/'.rawurlencode($authorAuthId));
+    }
+
+    public function saveDraft(string $bookingId, string $authorAuthId, string $content): array
+    {
+        return $this->send('PUT', 'api/v1/bookings/'.rawurlencode($bookingId).'/drafts/'.rawurlencode($authorAuthId), ['content' => $content]);
+    }
+
+    public function discardDraft(string $bookingId, string $authorAuthId): void
+    {
+        $this->send('DELETE', 'api/v1/bookings/'.rawurlencode($bookingId).'/drafts/'.rawurlencode($authorAuthId));
+    }
+
+    public function pendingDrafts(string $authorAuthId): array
+    {
+        return array_values((array) $this->send('GET', 'api/v1/drafts', ['author' => $authorAuthId]));
+    }
+
     public function complete(string $bookingId, ?string $actor = null): Booking
     {
         return $this->bookingAction($bookingId, 'complete', ['actor' => $actor]);
