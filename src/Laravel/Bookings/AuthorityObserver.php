@@ -194,6 +194,15 @@ abstract class AuthorityObserver
             $m->setAttribute($col, $linked->id);
             $moved = $linked->start->getTimestamp() !== $s->start($m)->getTimestamp()
                 || $linked->end->getTimestamp() !== $s->end($m)->getTimestamp();
+            if ($s instanceof HeldBookingSubject) {
+                // From here the record is held: its text must be on the booking before its own
+                // columns stop being written.
+                $d = $s->details($m);
+                if ($d !== []) {
+                    $seam->describe($linked->id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null);
+                }
+                app(HeldBookings::class)->forget($linked->id);
+            }
         }
 
         if ($moved) {

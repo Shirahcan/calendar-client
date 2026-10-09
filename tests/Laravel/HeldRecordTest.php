@@ -344,6 +344,18 @@ class HeldRecordTest extends TestCase
         $this->assertSame('cancelled', $this->fresh($m)->status);
     }
 
+    public function test_a_row_from_before_the_move_is_linked_with_its_text_on_its_first_change(): void
+    {
+        $m = HeldMeeting::withoutEvents(fn () => HeldMeeting::create(['uuid' => (string) Str::uuid(), 'host_id' => 'host', 'status' => 'scheduled',
+            'title' => 'Legacy', 'starts_at' => '2026-10-07 15:00:00', 'ends_at' => '2026-10-07 15:30:00']));
+
+        $m->update(['starts_at' => '2026-10-07 16:00:00', 'ends_at' => '2026-10-07 16:30:00']);
+
+        $this->assertNotNull($m->calendar_booking_id);
+        $this->assertSame('Legacy', $this->fake->bookings[$m->calendar_booking_id]['title']);
+        $this->assertSame(['Legacy', '2026-10-07 16:00:00'], [$this->fresh($m)->title, $this->fresh($m)->starts_at->format('Y-m-d H:i:s')]);
+    }
+
     public function test_a_row_without_a_booking_keeps_its_own_columns(): void
     {
         HeldMeeting::withoutEvents(fn () => HeldMeeting::create(['uuid' => (string) Str::uuid(), 'host_id' => 'host', 'status' => 'scheduled',
