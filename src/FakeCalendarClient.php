@@ -275,7 +275,8 @@ class FakeCalendarClient implements CalendarClient
                 && (! isset($query['from']) || new DateTimeImmutable($b['end_utc']) > new DateTimeImmutable((string) $query['from']))
                 && (! isset($query['to']) || new DateTimeImmutable($b['start_utc']) < new DateTimeImmutable((string) $query['to']))
                 && (! isset($query['starts_from']) || new DateTimeImmutable($b['start_utc']) >= new DateTimeImmutable((string) $query['starts_from']))
-                && (! isset($query['starts_to']) || new DateTimeImmutable($b['start_utc']) <= new DateTimeImmutable((string) $query['starts_to']));
+                && (! isset($query['starts_to']) || new DateTimeImmutable($b['start_utc']) <= new DateTimeImmutable((string) $query['starts_to']))
+                && (! isset($query['ends_to']) || new DateTimeImmutable($b['end_utc']) <= new DateTimeImmutable((string) $query['ends_to']));
         }));
         usort($rows, fn ($a, $b) => (($query['order'] ?? 'asc') === 'desc' ? -1 : 1) * strcmp($a['start_utc'], $b['start_utc']));
         $offset = (int) ($query['offset'] ?? 0);
