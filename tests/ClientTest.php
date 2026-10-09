@@ -214,6 +214,19 @@ class ClientTest extends TestCase
         $this->assertNull($fake->hostPreferences('auth-1')['call_tool'], 'the preference falls away with the tool');
     }
 
+    public function test_the_fake_imports_a_past_meeting_once_and_searches_by_who_and_when(): void
+    {
+        $fake = new FakeCalendarClient();
+        $meeting = ['idempotency_key' => 'meeting:1', 'product_ref' => 'meeting:1', 'hosts' => ['auth-1'], 'state' => 'completed',
+            'start' => '2025-03-03T14:00:00Z', 'end' => '2025-03-03T15:00:00Z', 'participants' => [['auth_id' => 'client-9', 'attendance' => 'attended']]];
+
+        $a = $fake->importBooking($meeting);
+        $this->assertSame($a->id, $fake->importBooking($meeting)->id, 'idempotent');
+        $this->assertSame(1, $fake->searchBookings(['participants' => ['client-9']])['total']);
+        $this->assertSame(0, $fake->searchBookings(['hosts' => ['auth-1'], 'from' => '2026-01-01T00:00:00Z'])['total']);
+        $this->assertSame('completed', $fake->searchBookings(['product_refs' => ['meeting:1']])['data'][0]->state);
+    }
+
     public function test_the_fake_reads_several_bookings_at_once(): void
     {
         $fake = new FakeCalendarClient();

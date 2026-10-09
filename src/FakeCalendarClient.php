@@ -236,6 +236,57 @@ class FakeCalendarClient implements CalendarClient
     }
 
     /** In the service's shape: rules nested, as GET /v1/booking-types answers. */
+    public function importBooking(array $meeting): Booking
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        foreach ($this->bookings as $b) {
+            if (($b['idempotency_key'] ?? null) === $meeting['idempotency_key']) {
+                return Booking::fromArray($b);
+            }
+        }
+        $id = sprintf('%08x-0000-4000-8000-%012x', count($this->bookings) + 1, random_int(0, 0xFFFFFFFFFFFF));
+        $this->bookings[$id] = [
+            'id' => $id, 'state' => (string) $meeting['state'], 'kind' => 'imported', 'booking_type' => null,
+            'product_ref' => $meeting['product_ref'] ?? null,
+            'start_utc' => $this->iso(new DateTimeImmutable((string) $meeting['start'])),
+            'end_utc' => $this->iso(new DateTimeImmutable((string) $meeting['end'])),
+            'hold_expires_at' => null, 'hosts' => array_values((array) $meeting['hosts']),
+            'participants' => array_values((array) ($meeting['participants'] ?? [])),
+            'title' => $meeting['title'] ?? null, 'description' => $meeting['description'] ?? null,
+            'location' => $meeting['location'] ?? null, 'cancelled_by' => $meeting['cancelled_by'] ?? null,
+            'cancel_reason' => $meeting['cancel_reason'] ?? null, 'created_at' => $meeting['created_at'] ?? null,
+            'history' => array_values((array) ($meeting['history'] ?? [])),
+            'idempotency_key' => $meeting['idempotency_key'], 'open_proposal' => null,
+        ];
+
+        return Booking::fromArray($this->bookings[$id]);
+    }
+
+    public function searchBookings(array $query): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $in = fn (string $k, $v) => ! isset($query[$k]) || in_array($v, (array) $query[$k], true);
+        $rows = array_values(array_filter($this->bookings, function (array $b) use ($query, $in) {
+            $participants = array_column((array) ($b['participants'] ?? []), 'auth_id');
+
+            return $in('ids', $b['id']) && $in('states', $b['state']) && $in('product_refs', $b['product_ref'] ?? null)
+                && (! isset($query['hosts']) || array_intersect((array) $query['hosts'], (array) $b['hosts']) !== [])
+                && (! isset($query['participants']) || array_intersect((array) $query['participants'], $participants) !== [])
+                && (! isset($query['from']) || new DateTimeImmutable($b['end_utc']) > new DateTimeImmutable((string) $query['from']))
+                && (! isset($query['to']) || new DateTimeImmutable($b['start_utc']) < new DateTimeImmutable((string) $query['to']));
+        }));
+        usort($rows, fn ($a, $b) => (($query['order'] ?? 'asc') === 'desc' ? -1 : 1) * strcmp($a['start_utc'], $b['start_utc']));
+        $offset = (int) ($query['offset'] ?? 0);
+        $limit = (int) ($query['limit'] ?? 100);
+        $page = array_slice($rows, $offset, $limit);
+
+        return [
+            'data' => array_map(fn (array $b) => Booking::fromArray($b), $page),
+            'next' => $offset + count($page) < count($rows) ? $offset + count($page) : null,
+            'total' => count($rows),
+        ];
+    }
+
     public function bookings(array $bookingIds): array
     {
         $this->log(__FUNCTION__, func_get_args());

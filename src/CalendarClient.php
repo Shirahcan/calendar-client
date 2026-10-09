@@ -162,6 +162,24 @@ interface CalendarClient
      */
     public function bookings(array $bookingIds): array;
 
+    /**
+     * Record an existing meeting as it happened (past times, any terminal state, participants with
+     * their answers and attendance, history). Idempotent by `idempotency_key`. The booking's
+     * `raw` carries `history`.
+     *
+     * @param  array<string, mixed>  $meeting
+     */
+    public function importBooking(array $meeting): Booking;
+
+    /**
+     * This product's bookings by who, when and state. `$query`: hosts, participants, product_refs,
+     * ids, states, kinds (lists), from, to (ISO instants; overlap), order (asc|desc), limit,
+     * offset, history (bool).
+     *
+     * @return array{data: list<Booking>, next: ?int, total: int}
+     */
+    public function searchBookings(array $query): array;
+
     // Mirrors: a product's EXISTING meetings copied in as busy until its cutover (S1).
     // No availability check, no webhook, no write-back. Keyed by your ref.
 

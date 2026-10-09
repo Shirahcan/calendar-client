@@ -117,6 +117,22 @@ class CalendarServiceClient implements CalendarClient
         $this->send('DELETE', 'api/v1/links/'.rawurlencode($ref));
     }
 
+    public function importBooking(array $meeting): Booking
+    {
+        return Booking::fromArray($this->send('POST', 'api/v1/bookings/import', $meeting));
+    }
+
+    public function searchBookings(array $query): array
+    {
+        $page = $this->send('POST', 'api/v1/bookings/search', $query);
+
+        return [
+            'data' => array_map(fn (array $b) => Booking::fromArray($b), (array) ($page['data'] ?? [])),
+            'next' => isset($page['next']) ? (int) $page['next'] : null,
+            'total' => (int) ($page['total'] ?? 0),
+        ];
+    }
+
     public function bookings(array $bookingIds): array
     {
         $out = [];
