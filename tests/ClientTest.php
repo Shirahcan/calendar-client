@@ -214,6 +214,14 @@ class ClientTest extends TestCase
         $this->assertNull($fake->hostPreferences('auth-1')['call_tool'], 'the preference falls away with the tool');
     }
 
+    public function test_the_fake_reads_several_bookings_at_once(): void
+    {
+        $fake = new FakeCalendarClient();
+        $b = $fake->createMeeting(['auth-1'], new DateTimeImmutable('2026-10-12T14:00:00Z'), new DateTimeImmutable('2026-10-12T15:00:00Z'), 'k-1');
+
+        $this->assertSame([$b->id], array_keys($fake->bookings([$b->id, 'missing'])));
+    }
+
     public function test_the_fake_manages_links_like_the_service(): void
     {
         $fake = new FakeCalendarClient();

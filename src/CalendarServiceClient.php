@@ -117,6 +117,18 @@ class CalendarServiceClient implements CalendarClient
         $this->send('DELETE', 'api/v1/links/'.rawurlencode($ref));
     }
 
+    public function bookings(array $bookingIds): array
+    {
+        $out = [];
+        foreach (array_chunk(array_values(array_unique($bookingIds)), 500) as $chunk) {
+            foreach ($this->send('GET', 'api/v1/bookings', ['ids' => $chunk]) as $row) {
+                $out[(string) $row['id']] = Booking::fromArray($row);
+            }
+        }
+
+        return $out;
+    }
+
     public function bookingTypes(array $refs): array
     {
         $out = [];

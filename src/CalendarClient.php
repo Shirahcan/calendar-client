@@ -153,6 +153,15 @@ interface CalendarClient
 
     public function booking(string $bookingId): Booking;
 
+    /**
+     * Several of this product's bookings in one call (a calendar view, a list), keyed by id;
+     * missing ones left out.
+     *
+     * @param  list<string>  $bookingIds
+     * @return array<string, Booking>
+     */
+    public function bookings(array $bookingIds): array;
+
     // Mirrors: a product's EXISTING meetings copied in as busy until its cutover (S1).
     // No availability check, no webhook, no write-back. Keyed by your ref.
 

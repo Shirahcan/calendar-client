@@ -236,6 +236,19 @@ class FakeCalendarClient implements CalendarClient
     }
 
     /** In the service's shape: rules nested, as GET /v1/booking-types answers. */
+    public function bookings(array $bookingIds): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $out = [];
+        foreach ($bookingIds as $id) {
+            if (isset($this->bookings[$id])) {
+                $out[$id] = Booking::fromArray($this->bookings[$id]);
+            }
+        }
+
+        return $out;
+    }
+
     public function bookingTypes(array $refs): array
     {
         $this->log(__FUNCTION__, func_get_args());
