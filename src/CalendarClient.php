@@ -173,7 +173,7 @@ interface CalendarClient
 
     /**
      * This product's bookings by who, when and state. `$query`: hosts, participants, product_refs,
-     * ids, states, kinds (lists), from, to (ISO instants; overlap), order (asc|desc), limit,
+     * ids, states, kinds (lists), from, to (ISO instants; overlap), starts_from, starts_to (start within), order (asc|desc), limit,
      * offset, history (bool).
      *
      * @return array{data: list<Booking>, next: ?int, total: int}
