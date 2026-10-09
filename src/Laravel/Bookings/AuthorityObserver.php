@@ -74,6 +74,16 @@ abstract class AuthorityObserver
         $s = $this->subject();
         $col = $s->column();
         $held = $s instanceof HeldBookingSubject;
+        if ($held && $s->enabled() && ($id = (string) $m->getAttribute($col)) !== '') {
+            // Booked already (the product's flow confirmed a hold): the record's own text is the
+            // booking's, and nothing else will carry it there. Throws Refusal: not written.
+            $d = $s->details($m);
+            if ($d !== []) {
+                app(HeldBookings::class)->put((new Seam())->describe($id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null));
+            }
+
+            return;
+        }
         if (! $s->enabled() || $m->getAttribute($col) || (! $held && ! $s->occupies($m))) {
             return;
         }

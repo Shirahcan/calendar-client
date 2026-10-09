@@ -326,6 +326,16 @@ class HeldRecordTest extends TestCase
         $this->assertSame('completed', $this->fresh($m)->status);
     }
 
+    public function test_a_record_written_onto_a_confirmed_hold_carries_its_text_there(): void
+    {
+        $booking = $this->fake->createMeeting(['host'], new DateTimeImmutable('2026-10-07T15:00:00Z'), new DateTimeImmutable('2026-10-07T15:30:00Z'), 'hold-1');
+
+        $m = $this->book(['calendar_booking_id' => $booking->id, 'title' => 'Visa strategy']);
+
+        $this->assertSame('Visa strategy', $this->fake->bookings[$booking->id]['title']);
+        $this->assertSame(['scheduled', 'Visa strategy'], [$this->fresh($m)->status, $this->fresh($m)->title]);
+    }
+
     public function test_a_booking_the_service_no_longer_has_reads_as_ended(): void
     {
         $m = $this->book();
