@@ -640,10 +640,7 @@ class FakeCalendarClient implements CalendarClient
         if ($b['state'] === Booking::COMPLETED) {
             return Booking::fromArray($b);
         }
-        if ((new DateTimeImmutable($b['start_utc'])) > $this->now()) {
-            throw new CalendarRequestRejected('A booking can only be completed once it has started.', 'invalid', 422);
-        }
-
+        // As the service: the product attests it (a call can run early, in the join window).
         return $this->move($bookingId, [Booking::CONFIRMED], Booking::COMPLETED);
     }
 
