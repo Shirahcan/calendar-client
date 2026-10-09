@@ -15,27 +15,57 @@ use DateTimeZone;
  */
 final class ZonedTime
 {
-    /** "3:25 PM EDT", "8:25 PM West Africa Standard Time" */
+    /** "3:25 PM EDT", "8:25 PM WAT" */
     public static function time(DateTimeInterface $instant, string $zone): string
     {
         return self::in($instant, $zone)->format('g:i A').' '.self::label($instant, $zone);
     }
 
     /**
-     * The zone's NAME at that instant: its abbreviation where ICU has one ("EDT", "MDT", "GMT"),
-     * else its full name ("West Africa Standard Time"). Never a bare offset ("GMT+1", "+04"):
-     * it names no place. The same rule as calendar-ui's zoneLabel, so screens and emails agree.
+     * The zone's SHORT NAME at that instant (owner 2026-10-09: "3:00 PM WAT"): ICU's English
+     * abbreviation where there is one ("EDT", "PST", "GMT"), else the curated one
+     * (ZoneAbbreviations: "WAT", "IST", "CEST"), else the offset for a zone nobody has named.
+     * The same rule and table as calendar-ui's zoneLabel, so screens and emails agree.
      */
     public static function label(DateTimeInterface $instant, string $zone): string
     {
-        if (! class_exists(\IntlDateFormatter::class)) {
-            return self::in($instant, $zone)->format('T');
+        $short = class_exists(\IntlDateFormatter::class)
+            ? self::icu($instant, $zone, 'zzz')
+            : self::in($instant, $zone)->format('T');
+        if (! preg_match('/^(GMT|UTC)?[+-]/', $short)) {
+            return $short;
         }
-        $name = fn (string $pattern): string => (string) (new \IntlDateFormatter('en_US', \IntlDateFormatter::NONE, \IntlDateFormatter::NONE, $zone, null, $pattern))
-            ->format(DateTimeImmutable::createFromInterface($instant));
-        $short = $name('zzz');
+        $known = ZoneAbbreviations::TABLE[$zone] ?? null;
+        if ($known === null) {
+            return $short;
+        }
 
-        return preg_match('/^(GMT|UTC)[+-]/', $short) ? $name('zzzz') : $short;
+        return isset($known[1]) && self::onDaylightTime($instant, $zone) ? $known[1] : $known[0];
+    }
+
+    /** The zone's full name ("West Africa Standard Time"), for a sentence that names it. */
+    public static function longName(DateTimeInterface $instant, string $zone): string
+    {
+        return class_exists(\IntlDateFormatter::class) ? self::icu($instant, $zone, 'zzzz') : self::in($instant, $zone)->format('T');
+    }
+
+    private static function icu(DateTimeInterface $instant, string $zone, string $pattern): string
+    {
+        return (string) (new \IntlDateFormatter('en_US', \IntlDateFormatter::NONE, \IntlDateFormatter::NONE, $zone, null, $pattern))
+            ->format(DateTimeImmutable::createFromInterface($instant));
+    }
+
+    /** On summer time: its offset is above the zone's standard (the lower of January and July). */
+    private static function onDaylightTime(DateTimeInterface $instant, string $zone): bool
+    {
+        $tz = new DateTimeZone($zone);
+        $year = (int) self::in($instant, 'UTC')->format('Y');
+        $standard = min(
+            $tz->getOffset(new DateTimeImmutable("{$year}-01-01 00:00:00", new DateTimeZone('UTC'))),
+            $tz->getOffset(new DateTimeImmutable("{$year}-07-01 00:00:00", new DateTimeZone('UTC'))),
+        );
+
+        return $tz->getOffset(DateTimeImmutable::createFromInterface($instant)) > $standard;
     }
 
     /** "Wednesday, October 7, 2026" on the zone's calendar. */
@@ -50,7 +80,7 @@ final class ZonedTime
         return self::date($instant, $zone).' at '.self::time($instant, $zone);
     }
 
-    /** "8:25 PM - 8:55 PM West Africa Standard Time": the zone once, at the end. */
+    /** "8:25 PM - 8:55 PM WAT": the zone once, at the end. */
     public static function timeRange(DateTimeInterface $start, DateTimeInterface $end, string $zone): string
     {
         return self::in($start, $zone)->format('g:i A').' - '.self::time($end, $zone);
