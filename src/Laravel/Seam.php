@@ -131,6 +131,15 @@ class Seam
         return $answer;
     }
 
+    /** Whether a host came. */
+    public function hostAttendance(string $bookingId, string $hostAuthId, string $status, ?string $actor = null): Booking
+    {
+        $answer = $this->call(fn () => $this->client()->markHostAttendance($bookingId, $hostAuthId, $status, $actor));
+        app(Bookings\HeldBookings::class)->forget($bookingId);
+
+        return $answer;
+    }
+
     /**
      * A record that already ENDED (completed, cancelled) handed to the service as it is: its past
      * time, its state, its people and its history, never re-checked against anyone's busy time.

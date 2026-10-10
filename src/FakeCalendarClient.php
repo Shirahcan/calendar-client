@@ -535,6 +535,21 @@ class FakeCalendarClient implements CalendarClient
         return $p;
     }
 
+    public function markHostAttendance(string $bookingId, string $hostAuthId, string $status, ?string $actor = null): Booking
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $b = $this->find($bookingId);
+        if (! in_array($b['state'], [Booking::CONFIRMED, Booking::COMPLETED], true)) {
+            throw new CalendarRequestRejected("A booking that is {$b['state']} cannot be given attendance.", 'invalid_state', 409);
+        }
+        if (! in_array($hostAuthId, (array) ($b['hosts'] ?? []), true)) {
+            throw new CalendarNotFound('That person is not a host of this booking.', null, 404);
+        }
+        $b['host_attendance'] = array_merge((array) ($b['host_attendance'] ?? []), [$hostAuthId => $status]);
+
+        return $this->save($b);
+    }
+
     public function respond(string $bookingId, string $role, string $response, array $who = [], ?string $reason = null, ?string $actor = null): array
     {
         $this->log(__FUNCTION__, func_get_args());

@@ -326,6 +326,10 @@ abstract class AuthorityObserver
             $seam->attendance($id, $outcome['role'] ?? 'booker', $outcome['attendance'], (array) ($outcome['who'] ?? []), $s->actor());
             $booking = null;   // participants changed: read it again
         }
+        foreach ((array) ($outcome['hosts'] ?? []) as $hostAuthId => $status) {
+            $seam->hostAttendance($id, (string) $hostAuthId, (string) $status, $s->actor());
+            $booking = null;
+        }
 
         return $booking;
     }

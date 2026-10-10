@@ -33,9 +33,10 @@ interface HeldBookingSubject extends BookingSubject
     /**
      * What the record's change says happened at the END of the meeting, or null: whether the
      * meeting is over (`complete`) and whether the person in `role` came (`attendance`), plus who
-     * they are (`who`) so a booking without them can gain them.
+     * they are (`who`) so a booking without them can gain them. `hosts` (host id => status) says
+     * whether each host came, so a host who missed the call is never recorded as the booker's absence.
      *
-     * @return array{complete: bool, attendance?: ?string, role?: string, who?: array}|null
+     * @return array{complete: bool, attendance?: ?string, role?: string, who?: array, hosts?: array<string, string>}|null
      */
     public function outcome(Model $m): ?array;
 

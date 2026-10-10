@@ -273,6 +273,13 @@ class CalendarServiceClient implements CalendarClient
         ], fn ($v) => $v !== null));
     }
 
+    public function markHostAttendance(string $bookingId, string $hostAuthId, string $status, ?string $actor = null): Booking
+    {
+        return Booking::fromArray($this->send('POST', 'api/v1/bookings/'.rawurlencode($bookingId).'/attendance', array_filter([
+            'host_auth_id' => $hostAuthId, 'status' => $status, 'actor' => $actor,
+        ], fn ($v) => $v !== null)));
+    }
+
     public function respond(string $bookingId, string $role, string $response, array $who = [], ?string $reason = null, ?string $actor = null): array
     {
         return $this->send('POST', 'api/v1/bookings/'.rawurlencode($bookingId).'/respond', array_filter([

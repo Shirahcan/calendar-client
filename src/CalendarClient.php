@@ -161,6 +161,14 @@ interface CalendarClient
     public function markAttendanceFor(string $bookingId, string $role, string $status, array $who = [], ?string $actor = null): array;
 
     /**
+     * Whether a HOST came (the consultant who missed a call is recorded on themselves, never as the
+     * booker's absence). Read back as the booking's `host_attendance` (host id => status).
+     *
+     * @param 'attended'|'no_show'|'late' $status
+     */
+    public function markHostAttendance(string $bookingId, string $hostAuthId, string $status, ?string $actor = null): Booking;
+
+    /**
      * A participant's answer to a live booking, by role (accepted = they confirmed they will
      * attend). A booking without them gains them from `$who`.
      *

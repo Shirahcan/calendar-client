@@ -593,4 +593,18 @@ class ClientTest extends TestCase
         $this->expectException(CalendarRequestRejected::class);
         $fake->removeParticipant($b->id, (int) $people['client-9']['id']);
     }
+
+    public function test_a_host_who_missed_the_call_is_recorded_on_the_host(): void
+    {
+        $client = $this->client($this->json(200, ["success" => true, "data" => $this->bookingData(["state" => "completed", "host_attendance" => ["auth-1" => "no_show"]])]));
+        $this->assertSame(["auth-1" => "no_show"], $client->markHostAttendance("b-1", "auth-1", "no_show", "portify:system")->raw["host_attendance"]);
+        $this->assertSame(["host_auth_id" => "auth-1", "status" => "no_show", "actor" => "portify:system"], json_decode((string) $this->history[0]["request"]->getBody(), true));
+
+        $fake = new FakeCalendarClient();
+        $b = $fake->importBooking(["idempotency_key" => "m:2", "product_ref" => "m:2", "hosts" => ["auth-1"], "state" => "completed",
+            "start" => "2026-10-12T14:00:00Z", "end" => "2026-10-12T15:00:00Z", "participants" => [["auth_id" => "client-9", "role" => "booker"]]]);
+        $this->assertSame("no_show", $fake->markHostAttendance($b->id, "auth-1", "no_show")->raw["host_attendance"]["auth-1"]);
+        $this->expectException(CalendarNotFound::class);
+        $fake->markHostAttendance($b->id, "stranger", "no_show");
+    }
 }
