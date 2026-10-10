@@ -214,6 +214,26 @@ class ClientTest extends TestCase
         $this->assertNull($fake->hostPreferences('auth-1')['call_tool'], 'the preference falls away with the tool');
     }
 
+    public function test_the_fake_refuses_a_booker_inside_the_notice_as_the_service_does(): void
+    {
+        $fake = new FakeCalendarClient();
+        $soon = new DateTimeImmutable('+2 hours');
+        $booking = $fake->createMeeting(['auth-1'], $soon, $soon->modify('+30 minutes'), 'k-n');
+        $fake->cancelNoticeMinutes = $fake->rescheduleNoticeMinutes = 1440;
+
+        try {
+            $fake->reschedule($booking->id, $soon->modify('+1 day'), by: 'booker');
+            $this->fail('a booker inside the notice must be refused');
+        } catch (\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected $e) {
+            $this->assertSame('notice_window', $e->errorCode);
+            $this->assertSame('Rescheduling must be made at least 24 hours before the meeting.', $e->getMessage());
+        }
+
+        // The host moves their own call freely; the product's cancel is never refused.
+        $fake->reschedule($booking->id, $soon->modify('+1 hour'), by: 'host');
+        $this->assertSame('cancelled', $fake->cancel($booking->id, 'product')->state);
+    }
+
     public function test_the_fake_imports_a_past_meeting_once_and_searches_by_who_and_when(): void
     {
         $fake = new FakeCalendarClient();

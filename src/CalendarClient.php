@@ -113,8 +113,10 @@ interface CalendarClient
     /**
      * @param DateTimeInterface|null $end null keeps the booking's length
      * @param bool $hostOverride the HOST moves it: only free time is required, not an offered slot
+     * @param string|null $by who moves it: a booker is held to the policy's reschedule notice
+     *                        (refused as notice_window); host, product and system are not
      */
-    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false): Booking;
+    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false, ?string $by = null): Booking;
 
     /** The product's text for the host's calendar copy; a confirmed booking's copy is rewritten. */
     public function updateDetails(string $bookingId, ?string $title = null, ?string $description = null, ?string $location = null): Booking;

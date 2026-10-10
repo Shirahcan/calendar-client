@@ -207,11 +207,11 @@ class CalendarServiceClient implements CalendarClient
         return $this->bookingAction($bookingId, 'decline', ['actor' => $actor, 'reason' => $reason]);
     }
 
-    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false): Booking
+    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false, ?string $by = null): Booking
     {
         return $this->bookingAction($bookingId, 'reschedule', [
             'start' => $start->format(DATE_ATOM), 'end' => $end?->format(DATE_ATOM),
-            'host_override' => $hostOverride ?: null, 'actor' => $actor, 'reason' => $reason,
+            'host_override' => $hostOverride ?: null, 'actor' => $actor, 'reason' => $reason, 'by' => $by,
         ]);
     }
 

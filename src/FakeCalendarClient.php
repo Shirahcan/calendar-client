@@ -21,6 +21,26 @@ use Shirahcan\CalendarClient\Exceptions\SlotUnavailable;
  */
 class FakeCalendarClient implements CalendarClient
 {
+    /** The policy's cancel / reschedule notice, as the service enforces it (0 = none; tests set it). */
+    public int $cancelNoticeMinutes = 0;
+
+    public int $rescheduleNoticeMinutes = 0;
+
+    /** As the service: inside the notice the person is refused, with the sentence they read. */
+    private function assertNotice(array $b, int $minutes, string $what): void
+    {
+        if ($minutes <= 0) {
+            return;
+        }
+        $now = class_exists(\Carbon\Carbon::class) ? \Carbon\Carbon::now()->getTimestamp() : time();
+        $start = strtotime((string) ($b['start_utc'] ?? ''));
+        if ($start !== false && $start - $now < $minutes * 60) {
+            $words = $minutes % 60 === 0 ? (intdiv($minutes, 60) === 1 ? '1 hour' : intdiv($minutes, 60).' hours') : "{$minutes} minutes";
+
+            throw new CalendarRequestRejected("{$what} must be made at least {$words} before the meeting.", 'notice_window', 409);
+        }
+    }
+
     /** @var array<string, list<Slot>> booking type ref => offered slots */
     private array $slots = [];
 
@@ -410,12 +430,15 @@ class FakeCalendarClient implements CalendarClient
         return $this->move($bookingId, [Booking::PENDING, Booking::DECLINED], Booking::DECLINED);
     }
 
-    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false): Booking
+    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false, ?string $by = null): Booking
     {
         $this->log(__FUNCTION__, func_get_args());
         $b = $this->find($bookingId);
         if (! in_array($b['state'], [Booking::CONFIRMED, Booking::PENDING], true)) {
             throw new CalendarRequestRejected("A booking that is {$b['state']} cannot be moved.", 'invalid_state', 409);
+        }
+        if ($by === 'booker') {
+            $this->assertNotice($b, $this->rescheduleNoticeMinutes, 'Rescheduling');
         }
         if ($this->taken($start->getTimestamp(), $bookingId)) {
             throw new SlotUnavailable('That time is no longer available. Please pick another.', 'slot_unavailable', 409);
@@ -460,6 +483,9 @@ class FakeCalendarClient implements CalendarClient
 
     public function cancel(string $bookingId, string $by, ?string $actor = null, ?string $reason = null): Booking
     {
+        if (($by === 'host' || $by === 'booker') && isset($this->bookings[$bookingId])) {
+            $this->assertNotice($this->bookings[$bookingId], $this->cancelNoticeMinutes, 'Cancellation');
+        }
         $b = $this->move($bookingId, [Booking::HELD, Booking::PENDING, Booking::CONFIRMED], Booking::CANCELLED);
 
         return $this->save(['cancelled_by' => $by, 'cancel_reason' => $reason] + $b->raw);
