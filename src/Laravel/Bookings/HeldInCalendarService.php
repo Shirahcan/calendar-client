@@ -2,7 +2,10 @@
 
 namespace Shirahcan\CalendarClient\Laravel\Bookings;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Shirahcan\CalendarClient\Booking;
+use Shirahcan\CalendarClient\CalendarClient;
 
 /**
  * For a model whose facts calendar-service holds (HeldBookingSubject). Use it on the model and
@@ -70,6 +73,67 @@ trait HeldInCalendarService
             }
             $m->setRawAttributes(array_merge($m->getAttributes(), $s->hydrate($bookings[$id] ?? null, $m)), true);
         }
+    }
+
+    /**
+     * Select the records whose bookings calendar-service returns for `$search` (the keys of
+     * CalendarClient::searchBookings: states, starts_from, starts_to, from, to, ends_to, hosts,
+     * participants, ...). When and in what state is always the service's answer; the product
+     * never filters its own copy of a time.
+     *
+     *   Meeting::query()->whereHeld(['states' => ['confirmed'], 'starts_from' => $now], order: 'asc')
+     *
+     * `$keep` narrows each returned booking in the product's own terms (a status the service
+     * does not distinguish). `$order` (asc|desc by start) orders the result; null leaves a chain's
+     * order alone. Every booking read is kept for the request, so the rows hydrate without a
+     * second call.
+     *
+     * One scope call is one search. Chained calls each search (and intersect correctly): pass
+     * every condition in ONE call.
+     *
+     * @param  (callable(Booking): bool)|null  $keep
+     */
+    public function scopeWhereHeld(Builder $query, array $search, ?callable $keep = null, ?string $order = null): Builder
+    {
+        $ids = static::heldBookingIds($search + ['order' => $order ?? 'asc'], $keep);
+        $column = $query->qualifyColumn(static::heldSubject()->column());
+        if ($ids === []) {
+            return $query->whereRaw('1 = 0');
+        }
+        $query->whereIn($column, $ids);
+        if ($order === null) {
+            return $query;
+        }
+        $cases = implode(' ', array_map(fn ($i) => 'WHEN ? THEN '.$i, array_keys($ids)));
+
+        return $query->orderByRaw('CASE '.$column.' '.$cases.' END', $ids);
+    }
+
+    /**
+     * The booking ids calendar-service returns for a search, every page, in its order, kept for
+     * the request (HeldBookings) so loading the records costs no second call.
+     *
+     * @param  (callable(Booking): bool)|null  $keep
+     * @return list<string>
+     */
+    public static function heldBookingIds(array $search, ?callable $keep = null): array
+    {
+        $ids = [];
+        $held = app(HeldBookings::class);
+        $search['limit'] = 500;
+        $search['offset'] = 0;
+        do {
+            $page = app(CalendarClient::class)->searchBookings($search);
+            foreach ($page['data'] as $b) {
+                $held->put($b);
+                if ($keep === null || $keep($b)) {
+                    $ids[] = $b->id;
+                }
+            }
+            $search['offset'] = $page['next'];
+        } while ($page['next'] !== null);
+
+        return $ids;
     }
 
     /** True once the record is held by a booking (its held columns are no longer its own). */

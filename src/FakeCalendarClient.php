@@ -827,11 +827,14 @@ class FakeCalendarClient implements CalendarClient
         return ['adopted' => count($out), 'revived' => 0, 'kept' => 0, 'skipped' => 0, 'rows' => $out];
     }
 
+    /** @var array<string, list<array>> host => the calendar connections the test says they have */
+    public array $connections = [];
+
     public function connections(string $hostAuthId): array
     {
         $this->log(__FUNCTION__, func_get_args());
 
-        return [];
+        return $this->connections[$hostAuthId] ?? [];
     }
 
     public function updateConnection(int $connectionId, string $hostAuthId, ?array $busyCalendars = null, ?string $writeCalendar = null): array

@@ -390,4 +390,27 @@ class HeldRecordTest extends TestCase
         $this->assertSame([], $this->fake->callsTo('bookings'));
         $this->assertInstanceOf(HeldBookings::class, app(HeldBookings::class));
     }
+
+    public function test_where_held_selects_by_the_services_answer_in_its_order_in_one_search(): void
+    {
+        $late = $this->book(['starts_at' => '2026-10-09 15:00:00', 'ends_at' => '2026-10-09 15:30:00']);
+        $early = $this->book(['starts_at' => '2026-10-07 15:00:00', 'ends_at' => '2026-10-07 15:30:00']);
+        $this->book(['starts_at' => '2026-10-20 15:00:00', 'ends_at' => '2026-10-20 15:30:00']);
+        $this->app->forgetScopedInstances();
+        $before = count($this->fake->callsTo('searchBookings'));
+
+        $found = HeldMeeting::query()->whereHeld(['starts_to' => '2026-10-10T00:00:00Z'], order: 'asc')->get();
+
+        $this->assertSame([$early->id, $late->id], $found->pluck('id')->all());
+        $this->assertSame(1, count($this->fake->callsTo('searchBookings')) - $before);
+    }
+
+    public function test_where_held_narrows_by_the_products_own_terms_and_matches_nothing_cleanly(): void
+    {
+        $keep = $this->book();
+        $this->book(['title' => 'Other', 'starts_at' => '2026-10-08 15:00:00', 'ends_at' => '2026-10-08 15:30:00']);
+
+        $this->assertSame([$keep->id], HeldMeeting::query()->whereHeld([], fn (Booking $b) => ($b->raw['title'] ?? null) === 'Intro')->pluck('id')->all());
+        $this->assertSame([], HeldMeeting::query()->whereHeld(['starts_from' => '2027-01-01T00:00:00Z'])->pluck('id')->all());
+    }
 }

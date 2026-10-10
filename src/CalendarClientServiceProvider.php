@@ -12,6 +12,7 @@ class CalendarClientServiceProvider extends ServiceProvider
 
         // The bookings one request has read (HeldInCalendarService): never outlives the request.
         $this->app->scoped(\Shirahcan\CalendarClient\Laravel\Bookings\HeldBookings::class);
+        $this->app->scoped(\Shirahcan\CalendarClient\Laravel\HostConnections::class);
 
         $this->app->singleton(CalendarClient::class, function () {
             $key = (string) config('calendar-client.trust_key', '');
