@@ -46,6 +46,7 @@ class KitTest extends TestCase
         $router->prefix('api')->group(function () {
             CalendarKit::webhookRoute('/webhooks/calendar-service');
             Route::get('/refuse', fn () => throw (new Seam())->refusal(new \Shirahcan\CalendarClient\Exceptions\SlotUnavailable('taken', 'slot_unavailable', 409)));
+            Route::get('/outage', fn () => throw new \Shirahcan\CalendarClient\Exceptions\CalendarServiceUnavailable('cURL error 7: connection refused'));
         });
     }
 
@@ -103,6 +104,10 @@ class KitTest extends TestCase
         RendersRefusals::register(new Exceptions($this->app->make(\Illuminate\Contracts\Debug\ExceptionHandler::class)));
 
         $this->getJson('/api/refuse')->assertStatus(409)->assertExactJson(['success' => false, 'message' => Seam::TAKEN]);
+
+        // An outage on a read is a plain 503 a person can read, never the transport text.
+        $this->getJson('/api/outage')->assertStatus(503)->assertJsonPath('code', 'calendar_unavailable')
+            ->assertJsonMissing(['message' => 'cURL error 7: connection refused']);
     }
 
     private function deliver(array $body, ?string $signature = null): \Illuminate\Testing\TestResponse
