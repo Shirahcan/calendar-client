@@ -169,6 +169,17 @@ interface CalendarClient
      */
     public function respond(string $bookingId, string $role, string $response, array $who = [], ?string $reason = null, ?string $actor = null): array;
 
+    /**
+     * Invite somebody to a live booking beside its booker (idempotent on auth_id, else email).
+     *
+     * @param array{auth_id?: ?string, email?: ?string, name?: ?string, zone?: ?string} $who
+     * @param 'attendee'|'guest' $role
+     */
+    public function addParticipant(string $bookingId, array $who, string $role = 'attendee', ?string $actor = null): Booking;
+
+    /** Take an attendee or guest off a live booking (never the booker). */
+    public function removeParticipant(string $bookingId, int $participantId, ?string $actor = null): Booking;
+
     /*
      * A meeting's notes and scratchpads (plan N1): they belong to its booking.
      * A note: {id, booking_id, author_auth_id, content, visibility, source_ref, meta, created_at, updated_at}.

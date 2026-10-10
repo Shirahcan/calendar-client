@@ -556,4 +556,41 @@ class ClientTest extends TestCase
         $this->expectException(CalendarRequestRejected::class);
         $fake->confirmHoliday('GH', '2027-03-09');
     }
+
+    public function test_participants_hit_their_routes(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['success' => true, 'data' => $this->bookingData(['state' => 'confirmed', 'participants' => [['id' => 1, 'role' => 'booker'], ['id' => 2, 'auth_id' => 'sp-1', 'role' => 'attendee']]])]),
+            $this->json(200, ['success' => true, 'data' => $this->bookingData(['state' => 'confirmed', 'participants' => [['id' => 1, 'role' => 'booker']]])]),
+        );
+
+        $this->assertCount(2, $client->addParticipant('b-1', ['auth_id' => 'sp-1', 'name' => 'Ana'], 'attendee', 'portify:user:1')->participants);
+        $this->assertCount(1, $client->removeParticipant('b-1', 2)->participants);
+
+        $this->assertSame('POST', $this->history[0]['request']->getMethod());
+        $this->assertSame('/api/v1/bookings/b-1/participants', $this->history[0]['request']->getUri()->getPath());
+        $this->assertSame(['auth_id' => 'sp-1', 'name' => 'Ana', 'role' => 'attendee', 'actor' => 'portify:user:1'], json_decode((string) $this->history[0]['request']->getBody(), true));
+        $this->assertSame('DELETE', $this->history[1]['request']->getMethod());
+        $this->assertSame('/api/v1/bookings/b-1/participants/2', $this->history[1]['request']->getUri()->getPath());
+    }
+
+    public function test_the_fake_keeps_several_attendees_apart(): void
+    {
+        $fake = new FakeCalendarClient();
+        $b = $fake->importBooking(['idempotency_key' => 'm:1', 'product_ref' => 'm:1', 'hosts' => ['auth-1'], 'state' => 'confirmed',
+            'start' => '2026-10-12T14:00:00Z', 'end' => '2026-10-12T15:00:00Z', 'participants' => [['auth_id' => 'client-9', 'role' => 'booker']]]);
+
+        $fake->addParticipant($b->id, ['auth_id' => 'a-1'], 'attendee');
+        $fake->addParticipant($b->id, ['auth_id' => 'a-2'], 'attendee');
+        $this->assertCount(3, $fake->addParticipant($b->id, ['auth_id' => 'a-2'], 'attendee')->participants, 'idempotent');
+
+        $this->assertSame('a-2', $fake->markAttendanceFor($b->id, 'attendee', 'attended', ['auth_id' => 'a-2'])['auth_id']);
+        $people = array_column($fake->booking($b->id)->participants, null, 'auth_id');
+        $this->assertNull($people['a-1']['attendance']);
+        $this->assertSame('attended', $people['a-2']['attendance']);
+
+        $this->assertCount(2, $fake->removeParticipant($b->id, (int) $people['a-1']['id'])->participants);
+        $this->expectException(CalendarRequestRejected::class);
+        $fake->removeParticipant($b->id, (int) $people['client-9']['id']);
+    }
 }

@@ -516,7 +516,7 @@ class FakeCalendarClient implements CalendarClient
         }
         $participants = array_values((array) ($b['participants'] ?? []));
         foreach ($participants as $i => $p) {
-            if (($p['role'] ?? null) === $role) {
+            if ($this->isPerson($participants, $i, $role, $who)) {
                 $participants[$i]['attendance'] = $status;
                 $b['participants'] = $participants;
                 $this->save($b);
@@ -544,7 +544,7 @@ class FakeCalendarClient implements CalendarClient
         }
         $participants = array_values((array) ($b['participants'] ?? []));
         foreach ($participants as $i => $p) {
-            if (($p['role'] ?? null) === $role) {
+            if ($this->isPerson($participants, $i, $role, $who)) {
                 $participants[$i]['response'] = $response;
                 $participants[$i]['response_reason'] = $reason;
                 $b['participants'] = $participants;
@@ -562,6 +562,74 @@ class FakeCalendarClient implements CalendarClient
         $this->save($b);
 
         return $p;
+    }
+
+    /**
+     * Whether participant $i is the one a role call means (as the service): the person $who names
+     * when it names one, else (or for the one booker) the role's first.
+     */
+    private function isPerson(array $participants, int $i, string $role, array $who): bool
+    {
+        $key = ! empty($who['auth_id']) ? 'auth_id' : (! empty($who['email']) ? 'email' : null);
+        if ($key !== null) {
+            foreach ($participants as $j => $p) {
+                if (($p[$key] ?? null) === $who[$key]) {
+                    return $j === $i;
+                }
+            }
+            if ($role !== 'booker') {
+                return false;
+            }
+        }
+        foreach ($participants as $j => $p) {
+            if (($p['role'] ?? null) === $role) {
+                return $j === $i;
+            }
+        }
+
+        return false;
+    }
+
+    public function addParticipant(string $bookingId, array $who, string $role = 'attendee', ?string $actor = null): Booking
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $b = $this->find($bookingId);
+        if (! in_array($b['state'], [Booking::PENDING, Booking::CONFIRMED], true)) {
+            throw new CalendarRequestRejected("A booking that is {$b['state']} cannot be given a participant.", 'invalid_state', 409);
+        }
+        if (! in_array($role, ['attendee', 'guest'], true) || (empty($who['auth_id']) && empty($who['email']))) {
+            throw new CalendarRequestRejected('Say who they are (auth_id or email); role is attendee or guest.', 'invalid_request', 422);
+        }
+        $participants = array_values((array) ($b['participants'] ?? []));
+        foreach ($participants as $p) {
+            if ((! empty($who['auth_id']) && ($p['auth_id'] ?? null) === $who['auth_id']) || (empty($who['auth_id']) && ($p['email'] ?? null) === $who['email'])) {
+                return $this->booking($bookingId);
+            }
+        }
+        $b['participants'] = [...$participants, ['id' => $this->participantId(), 'auth_id' => $who['auth_id'] ?? null, 'email' => $who['email'] ?? null,
+            'name' => $who['name'] ?? null, 'zone' => $who['zone'] ?? null, 'role' => $role, 'attendance' => null, 'response' => null]];
+
+        return $this->save($b);
+    }
+
+    public function removeParticipant(string $bookingId, int $participantId, ?string $actor = null): Booking
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $b = $this->find($bookingId);
+        $participants = array_values((array) ($b['participants'] ?? []));
+        foreach ($participants as $i => $p) {
+            if (($p['id'] ?? null) === $participantId) {
+                if (($p['role'] ?? null) === 'booker') {
+                    throw new CalendarRequestRejected('The booker cannot be removed; cancel the booking instead.', 'invalid_request', 422);
+                }
+                unset($participants[$i]);
+                $b['participants'] = array_values($participants);
+
+                return $this->save($b);
+            }
+        }
+
+        throw new CalendarNotFound('That participant is not on this booking.', null, 404);
     }
 
     /** @var array<string, array<string, mixed>> note id => note */

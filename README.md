@@ -49,6 +49,11 @@ $bookerZone, $first, $last)` lists slots under the booker's dates (an engine tha
 days computes `hostWindow($first, $last)` first); `heatmap($groups, 'Y-m')` counts those same days;
 `dateMismatch($slotStartUtc, $dateTheySaw, $bookerZone)` is the hold guard's refusal.
 
+**Who a meeting is for lives on the booking**, never in a product table: `addParticipant($id,
+['auth_id' => $spouseId, 'name' => 'Ana'], 'attendee')` (or a `guest` by email) and
+`removeParticipant($id, $participantId)`. Answers and attendance name the person
+(`respond` / `markAttendanceFor` with `$who['auth_id']`), so several attendees stay apart.
+
 **Times in email and calendar files** use the recipient's PROFILE zone and always name it:
 `ZonedTime::dateTime($start, $recipientZone)` gives "Wednesday, October 7, 2026 at 8:25 PM WAT".
 Screens use the viewer's device clock instead (calendar-ui `useDisplayTimezone`), also labelled.

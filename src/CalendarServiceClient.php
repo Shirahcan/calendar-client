@@ -281,6 +281,19 @@ class CalendarServiceClient implements CalendarClient
         ], fn ($v) => $v !== null));
     }
 
+    public function addParticipant(string $bookingId, array $who, string $role = 'attendee', ?string $actor = null): Booking
+    {
+        return Booking::fromArray($this->send('POST', 'api/v1/bookings/'.rawurlencode($bookingId).'/participants', array_filter([
+            'auth_id' => $who['auth_id'] ?? null, 'email' => $who['email'] ?? null, 'name' => $who['name'] ?? null,
+            'zone' => $who['zone'] ?? null, 'role' => $role, 'actor' => $actor,
+        ], fn ($v) => $v !== null)));
+    }
+
+    public function removeParticipant(string $bookingId, int $participantId, ?string $actor = null): Booking
+    {
+        return Booking::fromArray($this->send('DELETE', 'api/v1/bookings/'.rawurlencode($bookingId).'/participants/'.$participantId, array_filter(['actor' => $actor])));
+    }
+
     public function notes(string $bookingId, ?string $viewerAuthId = null): array
     {
         return array_values((array) $this->send('GET', 'api/v1/bookings/'.rawurlencode($bookingId).'/notes', array_filter(['viewer' => $viewerAuthId], fn ($v) => $v !== null)));
