@@ -422,12 +422,18 @@ class FakeCalendarClient implements CalendarClient
     public function approve(string $bookingId, ?string $actor = null): Booking
     {
         // As the service: approving a booking that is already confirmed changes nothing.
-        return $this->move($bookingId, [Booking::PENDING, Booking::CONFIRMED], Booking::CONFIRMED);
+        $was = $this->find($bookingId)['state'];
+        $booking = $this->move($bookingId, [Booking::PENDING, Booking::CONFIRMED], Booking::CONFIRMED);
+
+        return $was === Booking::PENDING ? $this->save(['decided_at' => $this->iso($this->now()), 'decided_actor' => $actor] + $booking->raw) : $booking;
     }
 
     public function decline(string $bookingId, ?string $actor = null, ?string $reason = null): Booking
     {
-        return $this->move($bookingId, [Booking::PENDING, Booking::DECLINED], Booking::DECLINED);
+        $was = $this->find($bookingId)['state'];
+        $booking = $this->move($bookingId, [Booking::PENDING, Booking::DECLINED], Booking::DECLINED);
+
+        return $was === Booking::PENDING ? $this->save(['decided_at' => $this->iso($this->now()), 'decided_actor' => $actor, 'decision_reason' => $reason] + $booking->raw) : $booking;
     }
 
     public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false, ?string $by = null): Booking
@@ -488,7 +494,7 @@ class FakeCalendarClient implements CalendarClient
         }
         $b = $this->move($bookingId, [Booking::HELD, Booking::PENDING, Booking::CONFIRMED], Booking::CANCELLED);
 
-        return $this->save(['cancelled_by' => $by, 'cancel_reason' => $reason] + $b->raw);
+        return $this->save(['cancelled_by' => $by, 'cancel_reason' => $reason, 'cancelled_at' => $this->iso($this->now()), 'cancelled_actor' => $actor] + $b->raw);
     }
 
     public function markAttendance(string $bookingId, int $participantId, string $status, ?string $actor = null): array

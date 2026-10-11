@@ -607,4 +607,18 @@ class ClientTest extends TestCase
         $this->expectException(CalendarNotFound::class);
         $fake->markHostAttendance($b->id, "stranger", "no_show");
     }
+
+    public function test_the_fake_says_when_and_who_cancelled_or_decided(): void
+    {
+        $fake = new FakeCalendarClient();
+        $b = $fake->importBooking(["idempotency_key" => "m:3", "product_ref" => "m:3", "hosts" => ["auth-1"], "state" => "pending_approval",
+            "start" => "2030-10-12T14:00:00Z", "end" => "2030-10-12T15:00:00Z"]);
+        $declined = $fake->decline($b->id, "app:user:1", "Not available");
+        $this->assertSame(["app:user:1", "Not available"], [$declined->raw["decided_actor"], $declined->raw["decision_reason"]]);
+        $this->assertNotNull($declined->raw["decided_at"]);
+
+        $c = $fake->importBooking(["idempotency_key" => "m:4", "product_ref" => "m:4", "hosts" => ["auth-1"], "state" => "confirmed",
+            "start" => "2030-10-13T14:00:00Z", "end" => "2030-10-13T15:00:00Z"]);
+        $this->assertSame("app:user:2", $fake->cancel($c->id, "product", "app:user:2")->raw["cancelled_actor"]);
+    }
 }
