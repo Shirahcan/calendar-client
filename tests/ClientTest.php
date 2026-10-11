@@ -621,4 +621,18 @@ class ClientTest extends TestCase
             "start" => "2030-10-13T14:00:00Z", "end" => "2030-10-13T15:00:00Z"]);
         $this->assertSame("app:user:2", $fake->cancel($c->id, "product", "app:user:2")->raw["cancelled_actor"]);
     }
+
+    public function test_a_booking_is_erased_and_a_person_forgotten(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['success' => true, 'data' => ['removed' => ['bookings' => 1, 'notes' => 2]]]),
+            $this->json(200, ['success' => true, 'data' => ['removed' => ['participants' => 3]]]),
+        );
+
+        $this->assertSame(['bookings' => 1, 'notes' => 2], $client->eraseBooking('b 1'));
+        $this->assertSame('POST', $this->history[0]['request']->getMethod());
+        $this->assertSame('/api/v1/bookings/b%201/erase', $this->history[0]['request']->getUri()->getPath());
+        $this->assertSame(['participants' => 3], $client->forgetPerson('maria@example.com', null));
+        $this->assertSame(['email' => 'maria@example.com'], json_decode((string) $this->history[1]['request']->getBody(), true));
+    }
 }

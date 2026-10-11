@@ -47,6 +47,12 @@ class FakeCalendarClient implements CalendarClient
     /** @var array<string, array> id => booking array */
     public array $bookings = [];
 
+    /** @var list<string> booking ids erased through eraseBooking() */
+    public array $erased = [];
+
+    /** @var list<array{email: ?string, auth_id: ?string}> people forgotten through forgetPerson() */
+    public array $forgotten = [];
+
     /** @var array<string, array> */
     public array $proposals = [];
 
@@ -708,6 +714,33 @@ class FakeCalendarClient implements CalendarClient
             throw new CalendarNotFound('Note not found.', null, 404);
         }
         unset($this->notes[$noteId]);
+    }
+
+    public function eraseBooking(string $bookingId): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        if (! isset($this->bookings[$bookingId])) {
+            return ['bookings' => 0];
+        }
+        unset($this->bookings[$bookingId]);
+        $notes = 0;
+        foreach ($this->notes as $id => $n) {
+            if (($n['booking_id'] ?? null) === $bookingId) {
+                unset($this->notes[$id]);
+                $notes++;
+            }
+        }
+        $this->erased[] = $bookingId;
+
+        return ['notes' => $notes, 'bookings' => 1];
+    }
+
+    public function forgetPerson(?string $email, ?string $authId): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $this->forgotten[] = ['email' => $email, 'auth_id' => $authId];
+
+        return ['participants' => 0, 'notes' => 0, 'pads' => 0, 'actors' => 0];
     }
 
     public function draft(string $bookingId, string $authorAuthId): array

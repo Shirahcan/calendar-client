@@ -324,6 +324,18 @@ class CalendarServiceClient implements CalendarClient
         $this->send('DELETE', 'api/v1/notes/'.rawurlencode($noteId));
     }
 
+    public function eraseBooking(string $bookingId): array
+    {
+        return array_map('intval', (array) ($this->send('POST', 'api/v1/bookings/'.rawurlencode($bookingId).'/erase')['removed'] ?? []));
+    }
+
+    public function forgetPerson(?string $email, ?string $authId): array
+    {
+        return array_map('intval', (array) ($this->send('POST', 'api/v1/people/forget', array_filter([
+            'email' => $email, 'auth_id' => $authId,
+        ], fn ($v) => $v !== null && $v !== ''))['removed'] ?? []));
+    }
+
     public function draft(string $bookingId, string $authorAuthId): array
     {
         return $this->send('GET', 'api/v1/bookings/'.rawurlencode($bookingId).'/drafts/'.rawurlencode($authorAuthId));

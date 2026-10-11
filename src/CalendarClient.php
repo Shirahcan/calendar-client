@@ -208,6 +208,23 @@ interface CalendarClient
 
     public function deleteNote(string $noteId): void;
 
+    /**
+     * Erase one of this product's bookings whole: its host calendar copies and Zoom meeting, notes,
+     * pads, people, history and the webhooks that carried it. Idempotent (a booking already gone
+     * answers zero). The product is told `booking.erased`.
+     *
+     * @return array<string, int> what was removed, by kind
+     */
+    public function eraseBooking(string $bookingId): array;
+
+    /**
+     * Forget one person across this product's bookings: their name, email and answer on each, the
+     * notes and pads they wrote, their name as an actor. The bookings stay. At least one of the two.
+     *
+     * @return array<string, int>
+     */
+    public function forgetPerson(?string $email, ?string $authId): array;
+
     public function draft(string $bookingId, string $authorAuthId): array;
 
     public function saveDraft(string $bookingId, string $authorAuthId, string $content): array;
