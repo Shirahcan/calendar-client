@@ -635,4 +635,14 @@ class ClientTest extends TestCase
         $this->assertSame(['participants' => 3], $client->forgetPerson('maria@example.com', null));
         $this->assertSame(['email' => 'maria@example.com'], json_decode((string) $this->history[1]['request']->getBody(), true));
     }
+
+    public function test_a_participants_name_and_zone_are_corrected(): void
+    {
+        $this->client($this->json(200, ['success' => true, 'data' => $this->bookingData(['participants' => [['id' => 7, 'zone' => 'America/Toronto']]])]))
+            ->updateParticipant('b-1', 7, ['zone' => 'America/Toronto', 'auth_id' => 'ignored'], 'app:user:1');
+
+        $this->assertSame('PATCH', $this->history[0]['request']->getMethod());
+        $this->assertSame('/api/v1/bookings/b-1/participants/7', $this->history[0]['request']->getUri()->getPath());
+        $this->assertSame(['zone' => 'America/Toronto', 'actor' => 'app:user:1'], json_decode((string) $this->history[0]['request']->getBody(), true));
+    }
 }

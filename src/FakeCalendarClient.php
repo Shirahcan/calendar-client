@@ -659,6 +659,23 @@ class FakeCalendarClient implements CalendarClient
         throw new CalendarNotFound('That participant is not on this booking.', null, 404);
     }
 
+    public function updateParticipant(string $bookingId, int $participantId, array $fields, ?string $actor = null): Booking
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $b = $this->find($bookingId);
+        $participants = array_values((array) ($b['participants'] ?? []));
+        foreach ($participants as $i => $p) {
+            if (($p['id'] ?? null) === $participantId) {
+                $participants[$i] = array_merge($p, array_intersect_key($fields, array_flip(['name', 'zone'])));
+                $b['participants'] = $participants;
+
+                return $this->save($b);
+            }
+        }
+
+        throw new CalendarNotFound('That participant is not on this booking.', null, 404);
+    }
+
     /** @var array<string, array<string, mixed>> note id => note */
     public array $notes = [];
 

@@ -188,6 +188,14 @@ interface CalendarClient
     /** Take an attendee or guest off a live booking (never the booker). */
     public function removeParticipant(string $bookingId, int $participantId, ?string $actor = null): Booking;
 
+    /**
+     * Correct a participant's name or zone (the clock they read the booking on). Never who they are
+     * or their role. Any state, so a past booking's record can be put right.
+     *
+     * @param array{name?: ?string, zone?: ?string} $fields
+     */
+    public function updateParticipant(string $bookingId, int $participantId, array $fields, ?string $actor = null): Booking;
+
     /*
      * A meeting's notes and scratchpads (plan N1): they belong to its booking.
      * A note: {id, booking_id, author_auth_id, content, visibility, source_ref, meta, created_at, updated_at}.
