@@ -377,6 +377,7 @@ class ClientTest extends TestCase
         $again = $fake->makeBackupCall($booking->id, 'auth-1');
         $this->assertFalse($again['made_now']);
         $this->assertSame($first['url'], $again['url']);
+        $this->assertSame($first['url'], $fake->booking($booking->id)->raw['backup_call']['url'], 'the booking carries it');
         $this->assertSame('revoked', $fake->disconnectBackupAccount()['status']);
         $this->assertNull($fake->backupAccount());
     }

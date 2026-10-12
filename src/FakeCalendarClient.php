@@ -1060,6 +1060,9 @@ class FakeCalendarClient implements CalendarClient
             'made_by' => $by, 'reason' => $reason, 'made_at' => gmdate('Y-m-d\TH:i:s\Z'),
         ];
 
+        // The booking carries it, as the service's does (`backup_call` on every read).
+        $this->bookings[$bookingId]['backup_call'] = $this->backupCalls[$bookingId];
+
         return ['made_now' => true] + $this->backupCalls[$bookingId];
     }
 
