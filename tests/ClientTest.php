@@ -208,7 +208,10 @@ class ClientTest extends TestCase
         $fake->callTools['auth-1'] = [['id' => 1, 'tool' => 'zoom', 'status' => 'active']];
         $this->assertSame('zoom', $fake->setHostPreferences('auth-1', ['call_tool' => 'zoom'])['call_tool']);
         $this->assertSame('zoom', $fake->callLink($booking->id)['tool']);
-        $this->assertSame(['call_tools' => ['zoom', 'google_meet'], 'calendar_providers' => ['google', 'microsoft']], $fake->schedulingPolicy()['offered']);
+        $this->assertSame([
+            'call_tools' => ['zoom', 'google_meet'], 'calendar_providers' => ['google', 'microsoft'],
+            'backup_call' => ['tool' => null, 'ready' => false, 'reason' => 'No backup call is offered.'],
+        ], $fake->schedulingPolicy()['offered']);
 
         $fake->disconnectCallTool(1, 'auth-1');
         $this->assertNull($fake->hostPreferences('auth-1')['call_tool'], 'the preference falls away with the tool');
@@ -329,6 +332,53 @@ class ClientTest extends TestCase
         $first = $fake->callLink($booking->id, 'zoom');
         $this->assertSame($first, $fake->callLink($booking->id, 'zoom'));
         $this->assertSame('google_meet', $fake->callLink((string) $fake->createMeeting(['auth-1'], new DateTimeImmutable('2026-10-13T14:00:00Z'), new DateTimeImmutable('2026-10-13T15:00:00Z'), 'k-2')->id, 'google_meet')['tool']);
+    }
+
+    public function test_the_backup_account_and_backup_call_hit_their_routes(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['success' => true, 'data' => null]),
+            $this->json(200, ['success' => true, 'data' => ['url' => 'https://accounts.google.com/x', 'expires_at' => '2026-10-12T00:10:00Z']]),
+            $this->json(201, ['success' => true, 'data' => ['tool' => 'google_meet', 'url' => 'https://meet.google.com/a', 'made_by' => 'u-1', 'reason' => 'repair_failed', 'made_at' => '2026-10-12T00:00:00Z', 'made_now' => true]]),
+            $this->json(200, ['success' => true, 'data' => ['id' => 9, 'status' => 'revoked']]),
+        );
+
+        $this->assertNull($client->backupAccount());
+        $this->assertSame('https://accounts.google.com/x', $client->backupAccountConnectUrl('https://portify.shirah.co/admin/ai/scheduling'));
+        $this->assertTrue($client->makeBackupCall('b-1', 'u-1', 'repair_failed')['made_now']);
+        $client->disconnectBackupAccount();
+
+        $this->assertSame('/api/v1/backup-account', $this->history[0]['request']->getUri()->getPath());
+        $this->assertSame('/api/v1/backup-account/connect-url', $this->history[1]['request']->getUri()->getPath());
+        $this->assertSame(['provider' => 'google', 'return_url' => 'https://portify.shirah.co/admin/ai/scheduling'], json_decode((string) $this->history[1]['request']->getBody(), true));
+        $this->assertSame('/api/v1/bookings/b-1/backup-call', $this->history[2]['request']->getUri()->getPath());
+        $this->assertSame(['by' => 'u-1', 'reason' => 'repair_failed'], json_decode((string) $this->history[2]['request']->getBody(), true));
+        $this->assertSame('DELETE', $this->history[3]['request']->getMethod());
+    }
+
+    public function test_the_fake_makes_one_backup_call_once_it_is_offered_and_an_account_is_connected(): void
+    {
+        $fake = new FakeCalendarClient();
+        $booking = $fake->createMeeting(['auth-1'], new DateTimeImmutable('2026-10-12T14:00:00Z'), new DateTimeImmutable('2026-10-12T15:00:00Z'), 'k-1');
+
+        foreach ([fn () => null, fn () => $fake->setSchedulingPolicy(['backup_call_tool' => 'google_meet'])] as $step) {
+            $step();
+            try {
+                $fake->makeBackupCall($booking->id);
+                $this->fail('a backup call needs the offer and an account');
+            } catch (\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected) {
+            }
+        }
+
+        $fake->backupAccount = ['id' => 1, 'provider' => 'google', 'purpose' => 'backup_calls', 'account_email' => 'calls@shirah.co', 'status' => 'active', 'last_error' => null];
+        $this->assertTrue($fake->schedulingPolicy()['offered']['backup_call']['ready']);
+        $first = $fake->makeBackupCall($booking->id, 'client-1', 'repair_failed');
+        $this->assertTrue($first['made_now']);
+        $again = $fake->makeBackupCall($booking->id, 'auth-1');
+        $this->assertFalse($again['made_now']);
+        $this->assertSame($first['url'], $again['url']);
+        $this->assertSame('revoked', $fake->disconnectBackupAccount()['status']);
+        $this->assertNull($fake->backupAccount());
     }
 
     public function test_the_fake_keeps_mirrors_and_never_logs_tokens(): void

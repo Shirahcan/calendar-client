@@ -58,6 +58,15 @@ days computes `hostWindow($first, $last)` first); `heatmap($groups, 'Y-m')` coun
 `ZonedTime::dateTime($start, $recipientZone)` gives "Wednesday, October 7, 2026 at 8:25 PM WAT".
 Screens use the viewer's device clock instead (calendar-ui `useDisplayTimezone`), also labelled.
 
+**When a call's own room cannot be rescued**, a product that offers a backup (policy
+`backup_call_tool: google_meet`) asks for one: `makeBackupCall($bookingId, $whoAsked, 'repair_failed')`
+returns the matching Google Meet on the product's own backup account (same time, title and invitees).
+One per booking, so everyone who switches lands in the same meeting (`made_now` says whether this
+call made it); the service then sends `booking.backup_call_made` so the product tells the others.
+An admin connects that account with `backupAccountConnectUrl($returnUrl)` and reads it with
+`backupAccount()`; `schedulingPolicy()['offered']['backup_call']` says whether a backup is ready and
+why not.
+
 Errors: `SlotUnavailable` (pick again), `HoldExpired` (start again), `CalendarNotFound`,
 `CalendarRequestRejected` (`->errors` lists every problem), `CalendarServiceUnavailable`
 (fail closed; never fall back to a local engine).

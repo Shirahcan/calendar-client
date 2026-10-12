@@ -326,6 +326,30 @@ interface CalendarClient
      */
     public function callLink(string $bookingId, ?string $tool = null, ?string $hostAuthId = null): ?array;
 
+    // The product's backup call account and a booking's backup call
+
+    /**
+     * The product's own backup call account (a Google account an admin connected), or null.
+     *
+     * @return array{id: int, provider: string, purpose: string, account_email: ?string, status: string, last_error: ?string}|null
+     */
+    public function backupAccount(): ?array;
+
+    /** Where an admin connects the product's backup call account (Google). */
+    public function backupAccountConnectUrl(string $returnUrl): string;
+
+    /** Disconnect the backup call account (revoked at Google, tokens wiped). */
+    public function disconnectBackupAccount(): array;
+
+    /**
+     * The matching meeting on the backup account, for a call whose own room could not be rescued.
+     * One per booking: asking again returns the same one (`made_now` false). Refused with a
+     * sentence (no backup offered, no account, booking not live) as CalendarRequestRejected.
+     *
+     * @return array{tool: string, url: string, made_by: ?string, reason: ?string, made_at: ?string, made_now: bool}
+     */
+    public function makeBackupCall(string $bookingId, ?string $by = null, ?string $reason = null): array;
+
     // The person's own preferences (one place for every product)
 
     /** @return array{call_tool: ?string, requires_approval: bool, booking_mode: 'native'|'external'} */

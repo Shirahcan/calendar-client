@@ -1009,6 +1009,77 @@ class FakeCalendarClient implements CalendarClient
     /** @var array<string, array> booking id => its call link */
     public array $callLinks = [];
 
+    /** The product's backup call account (set it to simulate an admin having connected one). */
+    public ?array $backupAccount = null;
+
+    /** @var array<string, array> booking id => its backup call */
+    public array $backupCalls = [];
+
+    public function backupAccount(): ?array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        return $this->backupAccount;
+    }
+
+    public function backupAccountConnectUrl(string $returnUrl): string
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        return 'https://accounts.google.com/o/oauth2/v2/auth?fake=backup&return='.rawurlencode($returnUrl);
+    }
+
+    public function disconnectBackupAccount(): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        if ($this->backupAccount === null) {
+            throw new CalendarRequestRejected('No backup call account is connected.', 'not_found', 404);
+        }
+        $gone = ['status' => 'revoked'] + $this->backupAccount;
+        $this->backupAccount = null;
+
+        return $gone;
+    }
+
+    public function makeBackupCall(string $bookingId, ?string $by = null, ?string $reason = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        if (isset($this->backupCalls[$bookingId])) {
+            return ['made_now' => false] + $this->backupCalls[$bookingId];
+        }
+        $offer = $this->backupOffer();
+        if (! $offer['ready']) {
+            throw new CalendarRequestRejected((string) $offer['reason'], 'invalid', 422);
+        }
+        $b = $this->find($bookingId);
+        if (! in_array($b['state'], [Booking::CONFIRMED, Booking::PENDING], true)) {
+            throw new CalendarRequestRejected("A booking that is {$b['state']} cannot get a backup call.", 'invalid_state', 422);
+        }
+        $this->backupCalls[$bookingId] = [
+            'tool' => 'google_meet', 'url' => "https://meet.google.com/backup-{$bookingId}",
+            'made_by' => $by, 'reason' => $reason, 'made_at' => gmdate('Y-m-d\TH:i:s\Z'),
+        ];
+
+        return ['made_now' => true] + $this->backupCalls[$bookingId];
+    }
+
+    /** @return array{tool: ?string, ready: bool, reason: ?string} */
+    private function backupOffer(): array
+    {
+        $tool = ($this->schedulingPolicy ?? [])['backup_call_tool'] ?? null;
+        if ($tool === null) {
+            return ['tool' => null, 'ready' => false, 'reason' => 'No backup call is offered.'];
+        }
+        if ($this->backupAccount === null) {
+            return ['tool' => $tool, 'ready' => false, 'reason' => 'No backup call account is connected.'];
+        }
+        if (($this->backupAccount['status'] ?? 'active') !== 'active') {
+            return ['tool' => $tool, 'ready' => false, 'reason' => 'The backup call account needs to be reconnected.'];
+        }
+
+        return ['tool' => $tool, 'ready' => true, 'reason' => null];
+    }
+
     /** @var array<string, array{call_tool: ?string, requires_approval: bool}> host => preferences */
     public array $hostPreferences = [];
 
@@ -1135,6 +1206,7 @@ class FakeCalendarClient implements CalendarClient
         'reschedule_notice_minutes' => 1440,
         'call_tools_offered' => ['zoom', 'google_meet'],
         'calendar_providers_offered' => ['google', 'microsoft'],
+        'backup_call_tool' => null,
         'default_duration_minutes' => 60,
         'duration_choices' => [15, 30, 45, 60, 90],
         'session_lengths' => ['quick_question' => 15, 'standard' => 30, 'extended' => 60, 'business' => 60],
@@ -1173,6 +1245,7 @@ class FakeCalendarClient implements CalendarClient
             'offered' => [
                 'call_tools' => array_values(array_intersect((array) $policy['call_tools_offered'], $this->configured['call_tools'])),
                 'calendar_providers' => array_values(array_intersect((array) $policy['calendar_providers_offered'], $this->configured['calendar_providers'])),
+                'backup_call' => $this->backupOffer(),
             ],
         ];
     }

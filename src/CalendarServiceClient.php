@@ -442,6 +442,28 @@ class CalendarServiceClient implements CalendarClient
         return $data === [] ? null : $data;
     }
 
+    public function backupAccount(): ?array
+    {
+        $data = $this->send('GET', 'api/v1/backup-account');
+
+        return $data === [] ? null : $data;
+    }
+
+    public function backupAccountConnectUrl(string $returnUrl): string
+    {
+        return (string) $this->send('POST', 'api/v1/backup-account/connect-url', ['provider' => 'google', 'return_url' => $returnUrl])['url'];
+    }
+
+    public function disconnectBackupAccount(): array
+    {
+        return $this->send('DELETE', 'api/v1/backup-account');
+    }
+
+    public function makeBackupCall(string $bookingId, ?string $by = null, ?string $reason = null): array
+    {
+        return $this->send('POST', 'api/v1/bookings/'.rawurlencode($bookingId).'/backup-call', array_filter(['by' => $by, 'reason' => $reason], fn ($v) => $v !== null));
+    }
+
     public function hostPreferences(string $hostAuthId): array
     {
         return $this->send('GET', 'api/v1/hosts/'.rawurlencode($hostAuthId).'/preferences');
