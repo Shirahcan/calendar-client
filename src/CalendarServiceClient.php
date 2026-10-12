@@ -449,7 +449,7 @@ class CalendarServiceClient implements CalendarClient
 
     public function setHostPreferences(string $hostAuthId, array $preferences): array
     {
-        return $this->send('PUT', 'api/v1/hosts/'.rawurlencode($hostAuthId).'/preferences', array_intersect_key($preferences, ['call_tool' => 1, 'requires_approval' => 1]));
+        return $this->send('PUT', 'api/v1/hosts/'.rawurlencode($hostAuthId).'/preferences', array_intersect_key($preferences, ['call_tool' => 1, 'requires_approval' => 1, 'booking_mode' => 1]));
     }
 
     public function holidays(string $region, int $year, array $include = []): array

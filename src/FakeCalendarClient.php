@@ -1016,13 +1016,17 @@ class FakeCalendarClient implements CalendarClient
     {
         $this->log(__FUNCTION__, func_get_args());
 
-        return $this->hostPreferences[$hostAuthId] ?? ['call_tool' => null, 'requires_approval' => false];
+        return $this->hostPreferences[$hostAuthId] ?? ['call_tool' => null, 'requires_approval' => false, 'booking_mode' => 'native'];
     }
 
     public function setHostPreferences(string $hostAuthId, array $preferences): array
     {
         $this->log(__FUNCTION__, func_get_args());
-        $current = $this->hostPreferences[$hostAuthId] ?? ['call_tool' => null, 'requires_approval' => false];
+        $current = $this->hostPreferences[$hostAuthId] ?? ['call_tool' => null, 'requires_approval' => false, 'booking_mode' => 'native'];
+        $mode = $preferences['booking_mode'] ?? $current['booking_mode'] ?? 'native';
+        if (! in_array($mode, ['native', 'external'], true)) {
+            throw new CalendarRequestRejected('booking_mode must be native or external.', 'invalid', 422);
+        }
         $tool = array_key_exists('call_tool', $preferences) ? $preferences['call_tool'] : $current['call_tool'];
         if ($tool === 'zoom' && array_filter($this->callTools[$hostAuthId] ?? [], fn ($t) => ($t['tool'] ?? null) === 'zoom' && ($t['status'] ?? 'active') === 'active') === []) {
             throw new CalendarRequestRejected('Connect your Zoom account first.', 'not_connected', 422);
@@ -1031,6 +1035,7 @@ class FakeCalendarClient implements CalendarClient
         return $this->hostPreferences[$hostAuthId] = [
             'call_tool' => $tool,
             'requires_approval' => (bool) ($preferences['requires_approval'] ?? $current['requires_approval']),
+            'booking_mode' => $mode,
         ];
     }
 

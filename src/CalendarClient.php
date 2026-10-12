@@ -328,12 +328,12 @@ interface CalendarClient
 
     // The person's own preferences (one place for every product)
 
-    /** @return array{call_tool: ?string, requires_approval: bool} */
+    /** @return array{call_tool: ?string, requires_approval: bool, booking_mode: 'native'|'external'} */
     public function hostPreferences(string $hostAuthId): array;
 
     /**
-     * @param array{call_tool?: ?string, requires_approval?: bool} $preferences only the keys given change
-     * @return array{call_tool: ?string, requires_approval: bool}
+     * @param array{call_tool?: ?string, requires_approval?: bool, booking_mode?: 'native'|'external'} $preferences only the keys given change
+     * @return array{call_tool: ?string, requires_approval: bool, booking_mode: 'native'|'external'}
      */
     public function setHostPreferences(string $hostAuthId, array $preferences): array;
 

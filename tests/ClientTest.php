@@ -303,6 +303,17 @@ class ClientTest extends TestCase
         $this->assertSame(\Shirahcan\CalendarClient\Booking::PENDING, $fake->confirm($fake->hold('consult', $nine, 'k1')->id)->state);
     }
 
+    public function test_how_a_host_takes_bookings_is_a_preference_native_by_default(): void
+    {
+        $fake = new FakeCalendarClient();
+        $this->assertSame('native', $fake->hostPreferences('auth-1')['booking_mode']);
+        $this->assertSame('external', $fake->setHostPreferences('auth-1', ['booking_mode' => 'external'])['booking_mode']);
+        $this->assertSame('external', $fake->setHostPreferences('auth-1', ['requires_approval' => true])['booking_mode'], 'other keys leave it alone');
+
+        $this->expectException(\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected::class);
+        $fake->setHostPreferences('auth-1', ['booking_mode' => 'calendly']);
+    }
+
     public function test_the_fake_makes_a_call_link_once_and_only_for_a_connected_tool(): void
     {
         $fake = new FakeCalendarClient();
