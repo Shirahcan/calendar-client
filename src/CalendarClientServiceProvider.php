@@ -46,5 +46,9 @@ class CalendarClientServiceProvider extends ServiceProvider
         // The product-side kit's tables (K). Each migration is a no-op where the product already
         // created that table, so adopting the kit changes no schema.
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([\Shirahcan\CalendarClient\Laravel\Console\TidyEventsCommand::class]);
+        }
     }
 }

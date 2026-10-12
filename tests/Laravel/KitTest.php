@@ -161,6 +161,47 @@ class KitTest extends TestCase
         $this->assertSame(SyncLedger::SYNCED, SyncLedger::sync('person', 'emp', ['v' => 2], [], $send), 'a refused subject is sent again once fixed');
     }
 
+    public function test_a_processed_event_keeps_only_ids_and_an_erased_booking_takes_its_events(): void
+    {
+        Event::fake([CalendarServiceEventReceived::class]);
+        $person = ['id' => 7, 'auth_id' => 'u-1', 'name' => 'Maria Garcia', 'email' => 'maria@example.com', 'zone' => 'Africa/Lagos'];
+        $this->deliver(['event' => 'booking.reminder_due', 'event_id' => 'r1', 'occurred_at' => '2026-10-05T08:00:00Z',
+            'booking' => ['id' => 'b-9', 'product_ref' => 'meeting:9', 'title' => 'Call with Maria', 'participants' => [$person]],
+            'reminder' => ['offset_minutes' => 60]])->assertOk();
+        $this->deliver(['event' => 'booking.responded', 'event_id' => 'r2', 'booking' => ['id' => 'b-9', 'participants' => [$person]]])->assertOk();
+        $this->deliver(['event' => 'booking.responded', 'event_id' => 'r3', 'booking' => ['id' => 'b-other']])->assertOk();
+
+        $row = CalendarServiceEvent::where('event_id', 'r1')->first();
+        $row->markProcessed();
+        $row->refresh();
+
+        $this->assertNotNull($row->processed_at);
+        $this->assertSame(['id' => 'b-9', 'product_ref' => 'meeting:9'], $row->payload['booking']);
+        $this->assertSame(60, $row->payload['reminder']['offset_minutes']);
+        $this->assertStringNotContainsString('maria', strtolower(json_encode($row->payload)));
+
+        // A row a product stamped itself is slimmed by the tidy command; an untouched one is not.
+        CalendarServiceEvent::where('event_id', 'r2')->update(['processed_at' => now()]);
+        $this->artisan('calendar-client:tidy-events')->assertSuccessful();
+        $this->assertStringNotContainsString('maria', strtolower(json_encode(CalendarServiceEvent::where('event_id', 'r2')->value('payload'))));
+
+        $this->assertSame(2, CalendarServiceEvent::forgetBooking('b-9'));
+        $this->assertSame(['r3'], CalendarServiceEvent::pluck('event_id')->all());
+        $this->assertSame(0, CalendarServiceEvent::forgetBooking(null));
+    }
+
+    public function test_events_past_the_retention_are_deleted(): void
+    {
+        Event::fake([CalendarServiceEventReceived::class]);
+        $this->deliver(['event' => 'booking.cancelled', 'event_id' => 'old'])->assertOk();
+        $this->deliver(['event' => 'booking.cancelled', 'event_id' => 'new'])->assertOk();
+        CalendarServiceEvent::where('event_id', 'old')->update(['created_at' => now()->subDays(CalendarServiceEvent::RETENTION_DAYS + 1)]);
+
+        $this->artisan('calendar-client:tidy-events')->assertSuccessful();
+
+        $this->assertSame(['new'], CalendarServiceEvent::pluck('event_id')->all());
+    }
+
     public function test_no_secret_refuses_everything(): void
     {
         config(['calendar-client.callback_secret' => '']);
