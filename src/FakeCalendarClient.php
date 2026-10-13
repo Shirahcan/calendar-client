@@ -277,6 +277,7 @@ class FakeCalendarClient implements CalendarClient
             'start_utc' => $this->iso(new DateTimeImmutable((string) $meeting['start'])),
             'end_utc' => $this->iso(new DateTimeImmutable((string) $meeting['end'])),
             'hold_expires_at' => null, 'hosts' => array_values((array) $meeting['hosts']),
+            'host_attendance' => array_merge(array_fill_keys(array_values((array) $meeting['hosts']), null), (array) ($meeting['host_attendance'] ?? [])),
             'participants' => $this->withParticipantIds((array) ($meeting['participants'] ?? [])),
             'title' => $meeting['title'] ?? null, 'description' => $meeting['description'] ?? null,
             'location' => $meeting['location'] ?? null, 'cancelled_by' => $meeting['cancelled_by'] ?? null,

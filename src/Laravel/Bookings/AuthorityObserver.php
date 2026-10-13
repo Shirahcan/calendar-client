@@ -96,10 +96,14 @@ abstract class AuthorityObserver
         if ($held && ! $s->occupies($m)) {
             // Already over when written (a past call recorded after the fact): history, not time.
             $state = $s->endedState($m) ?? throw new \LogicException(class_basename($m).' was written already ended, and its subject names no state to hand the service.');
+            // Whether each host came goes with it: the booking's outcome (held, no-show) is read from
+            // attendance, so a past call written without it would read as never recorded.
+            $hostAttendance = array_intersect_key((array) ($s->outcome($m)['hosts'] ?? []), array_flip($hosts));
             $booking = (new Seam())->import(array_filter([
                 'idempotency_key' => $ref, 'product_ref' => $ref, 'hosts' => $hosts, 'state' => $state,
                 'start' => $s->start($m)->toIso8601ZuluString(), 'end' => $s->end($m)->toIso8601ZuluString(),
                 'participants' => $s->participants($m), 'cancel_reason' => $s->cancelReason($m),
+                'host_attendance' => $hostAttendance === [] ? null : $hostAttendance,
             ] + $s->details($m), fn ($v) => $v !== null));
             $m->setAttribute($col, $booking->id);
             app(HeldBookings::class)->put($booking);
