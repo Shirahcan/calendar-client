@@ -215,6 +215,14 @@ class CalendarServiceClient implements CalendarClient
         ]);
     }
 
+    public function rebook(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $by = null, ?DateTimeInterface $end = null, ?string $productRef = null): Booking
+    {
+        return $this->bookingAction($bookingId, 'rebook', [
+            'start' => $start->format(DATE_ATOM), 'end' => $end?->format(DATE_ATOM),
+            'actor' => $actor, 'by' => $by, 'product_ref' => $productRef,
+        ]);
+    }
+
     public function updateDetails(string $bookingId, ?string $title = null, ?string $description = null, ?string $location = null): Booking
     {
         return Booking::fromArray($this->send('PATCH', 'api/v1/bookings/'.rawurlencode($bookingId), array_filter(

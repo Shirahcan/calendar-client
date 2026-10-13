@@ -825,6 +825,31 @@ class FakeCalendarClient implements CalendarClient
         return array_map(fn ($p) => ['id' => $p['id'] ?? $this->participantId(), 'attendance' => $p['attendance'] ?? null] + (array) $p, array_values($participants));
     }
 
+    public function rebook(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $by = null, ?DateTimeInterface $end = null, ?string $productRef = null): Booking
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $old = $this->find($bookingId);
+        if (isset($old['rebooked_to'], $this->bookings[$old['rebooked_to']]) && $this->bookings[$old['rebooked_to']]['state'] !== Booking::CANCELLED) {
+            return Booking::fromArray($this->bookings[$old['rebooked_to']]);
+        }
+        $outcome = Booking::deriveOutcome($old);
+        if (! in_array($outcome, [Booking::OUTCOME_NO_SHOW, Booking::OUTCOME_HOST_NO_SHOW, Booking::OUTCOME_NOBODY_CAME, Booking::OUTCOME_UNRECORDED, Booking::OUTCOME_CANCELLED], true)) {
+            throw new CalendarRequestRejected("A booking that is {$outcome} cannot be rebooked.", 'not_rebookable', 409);
+        }
+        $length = (new DateTimeImmutable($old['end_utc']))->getTimestamp() - (new DateTimeImmutable($old['start_utc']))->getTimestamp();
+        $end ??= DateTimeImmutable::createFromInterface($start)->modify("+{$length} seconds");
+        $people = array_map(fn (array $p) => array_intersect_key($p, array_flip(['auth_id', 'name', 'email', 'zone', 'role'])), (array) ($old['participants'] ?? []));
+
+        $new = $this->createMeeting((array) $old['hosts'], $start, $end, "rebook:{$bookingId}:".$start->getTimestamp(), [
+            'participants' => $people, 'product_ref' => $productRef ?? ($old['product_ref'] ?? null),
+            'title' => $old['title'] ?? null, 'description' => $old['description'] ?? null, 'location' => $old['location'] ?? null,
+        ]);
+        $this->bookings[$new->id]['rebooked_from'] = $bookingId;
+        $this->bookings[$bookingId]['rebooked_to'] = $new->id;
+
+        return Booking::fromArray($this->bookings[$new->id]);
+    }
+
     public function createMeeting(array $hostAuthIds, DateTimeInterface $start, DateTimeInterface $end, string $idempotencyKey, array $details = []): Booking
     {
         $this->log(__FUNCTION__, func_get_args());

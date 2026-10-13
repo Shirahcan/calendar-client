@@ -118,6 +118,17 @@ interface CalendarClient
      */
     public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false, ?string $by = null): Booking;
 
+    /**
+     * Book a call that did not happen (outcome no_show, host_no_show, nobody_came, unrecorded or
+     * cancelled) again at a time ahead, for the same hosts and people (its length unless `$end`).
+     * The new booking carries `rebooked_from`; the old one `rebooked_to`. Asking again returns it.
+     * Throws CalendarRequestRejected (not_rebookable) for a held or upcoming call, SlotUnavailable
+     * when a host is busy then.
+     *
+     * @param string|null $by who rebooks: the booker, a host, an admin (recorded on the old one)
+     */
+    public function rebook(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $by = null, ?DateTimeInterface $end = null, ?string $productRef = null): Booking;
+
     /** The product's text for the host's calendar copy; a confirmed booking's copy is rewritten. */
     public function updateDetails(string $bookingId, ?string $title = null, ?string $description = null, ?string $location = null): Booking;
 
