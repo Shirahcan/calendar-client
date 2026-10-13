@@ -296,6 +296,7 @@ class FakeCalendarClient implements CalendarClient
             $participants = array_column((array) ($b['participants'] ?? []), 'auth_id');
 
             return $in('ids', $b['id']) && $in('states', $b['state']) && $in('product_refs', $b['product_ref'] ?? null)
+                && $in('outcomes', Booking::deriveOutcome($b))
                 && (! isset($query['hosts']) || array_intersect((array) $query['hosts'], (array) $b['hosts']) !== [])
                 && (! isset($query['participants']) || array_intersect((array) $query['participants'], $participants) !== [])
                 && (! isset($query['from']) || new DateTimeImmutable($b['end_utc']) > new DateTimeImmutable((string) $query['from']))
