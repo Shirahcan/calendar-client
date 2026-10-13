@@ -403,9 +403,11 @@ class CalendarServiceClient implements CalendarClient
         return ['events' => (array) ($data['events'] ?? []), 'stale_external' => (bool) ($data['stale_external'] ?? false)];
     }
 
-    public function connectUrl(string $hostAuthId, string $provider, string $returnUrl): string
+    public function connectUrl(string $hostAuthId, string $provider, string $returnUrl, ?string $thenUse = null): string
     {
-        return (string) $this->send('POST', 'api/v1/connections/connect-url', ['host' => $hostAuthId, 'provider' => $provider, 'return_url' => $returnUrl])['url'];
+        return (string) $this->send('POST', 'api/v1/connections/connect-url', array_filter([
+            'host' => $hostAuthId, 'provider' => $provider, 'return_url' => $returnUrl, 'then_use' => $thenUse,
+        ], fn ($v) => $v !== null))['url'];
     }
 
     public function connections(string $hostAuthId): array

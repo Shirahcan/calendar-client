@@ -300,8 +300,12 @@ interface CalendarClient
 
     // Calendar connections (the person's, shared by every product)
 
-    /** @param 'google'|'microsoft'|'zoom' $provider zoom is a call tool, not a calendar */
-    public function connectUrl(string $hostAuthId, string $provider, string $returnUrl): string;
+    /**
+     * @param 'google'|'microsoft'|'zoom' $provider zoom is a call tool, not a calendar
+     * @param 'zoom'|'google_meet'|null $thenUse "connect and use": once the connect lands, the
+     *        host's calls run on this tool (zoom with provider zoom, google_meet with provider google)
+     */
+    public function connectUrl(string $hostAuthId, string $provider, string $returnUrl, ?string $thenUse = null): string;
 
     /** @return list<array> */
     public function connections(string $hostAuthId): array;

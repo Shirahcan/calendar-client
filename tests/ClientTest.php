@@ -334,6 +334,18 @@ class ClientTest extends TestCase
         $this->assertSame('google_meet', $fake->callLink((string) $fake->createMeeting(['auth-1'], new DateTimeImmutable('2026-10-13T14:00:00Z'), new DateTimeImmutable('2026-10-13T15:00:00Z'), 'k-2')->id, 'google_meet')['tool']);
     }
 
+    public function test_connect_and_use_sends_then_use_and_the_fake_refuses_a_mismatch(): void
+    {
+        $client = $this->client($this->json(200, ['success' => true, 'data' => ['url' => 'https://zoom.us/oauth/authorize?x=1', 'expires_at' => '2026-10-13T00:10:00Z']]));
+        $client->connectUrl('auth-1', 'zoom', 'https://portify.shirah.co/consultant/calendar', 'zoom');
+        $this->assertSame(['host' => 'auth-1', 'provider' => 'zoom', 'return_url' => 'https://portify.shirah.co/consultant/calendar', 'then_use' => 'zoom'], json_decode((string) $this->history[0]['request']->getBody(), true));
+
+        $fake = new FakeCalendarClient();
+        $this->assertStringContainsString('then_use=google_meet', $fake->connectUrl('auth-1', 'google', 'https://x.test', 'google_meet'));
+        $this->expectException(\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected::class);
+        $fake->connectUrl('auth-1', 'google', 'https://x.test', 'zoom');
+    }
+
     public function test_the_backup_account_and_backup_call_hit_their_routes(): void
     {
         $client = $this->client(

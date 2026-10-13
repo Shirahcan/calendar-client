@@ -867,11 +867,14 @@ class FakeCalendarClient implements CalendarClient
         return ['events' => $events, 'stale_external' => false];
     }
 
-    public function connectUrl(string $hostAuthId, string $provider, string $returnUrl): string
+    public function connectUrl(string $hostAuthId, string $provider, string $returnUrl, ?string $thenUse = null): string
     {
         $this->log(__FUNCTION__, func_get_args());
+        if ($thenUse !== null && ! (($thenUse === 'zoom' && $provider === 'zoom') || ($thenUse === 'google_meet' && $provider === 'google'))) {
+            throw new CalendarRequestRejected('then_use must be zoom (with provider zoom) or google_meet (with provider google).', 'invalid', 422);
+        }
 
-        return "https://calendar.example.test/oauth/{$provider}/start?host=".rawurlencode($hostAuthId);
+        return "https://calendar.example.test/oauth/{$provider}/start?host=".rawurlencode($hostAuthId).($thenUse !== null ? '&then_use='.$thenUse : '');
     }
 
     public function mirror(string $ref, array $hostAuthIds, DateTimeInterface $start, DateTimeInterface $end): array
