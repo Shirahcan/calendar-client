@@ -48,9 +48,12 @@ interface CalendarClient
 
     /**
      * A host's links as the service reads them back. buffer_* null = the host's usual buffer;
-     * days_ahead null = the policy's horizon; daily_cap null = no limit.
+     * days_ahead null = the policy's horizon; daily_cap null = no limit. expires_at (ISO 8601) and
+     * max_bookings null = no end; bookings_used is counted only for a capped link. closed_reason is
+     * why it takes no bookings (inactive, expired, full) or null, and a hold on it is refused with
+     * that reason as the code (link_inactive, link_expired, link_full).
      *
-     * @return list<array{ref: string, host: string, name: string, description: ?string, color: ?string, slug: string, is_active: bool, is_default: bool, external_url: ?string, external_call_url: ?string, duration: ?int, buffer_before: ?int, buffer_after: ?int, daily_cap: ?int, days_ahead: ?int}>
+     * @return list<array{ref: string, host: string, name: string, description: ?string, color: ?string, slug: string, is_active: bool, is_default: bool, external_url: ?string, external_call_url: ?string, duration: ?int, buffer_before: ?int, buffer_after: ?int, daily_cap: ?int, days_ahead: ?int, expires_at: ?string, max_bookings: ?int, bookings_used: ?int, closed_reason: ?string}>
      */
     public function links(string $hostAuthId): array;
 
@@ -66,7 +69,7 @@ interface CalendarClient
     /**
      * @param  array<string, mixed>  $fields  name and duration required; description, color, slug, is_active,
      *                                        is_default, external_url, external_call_url, buffer_before, buffer_after, daily_cap, days_ahead,
-     *                                        schedule, ref optional
+     *                                        expires_at (future, ISO 8601), max_bookings (1..10000), schedule, ref optional
      *
      * @throws Exceptions\CalendarRequestRejected with every reason in `errors`
      */

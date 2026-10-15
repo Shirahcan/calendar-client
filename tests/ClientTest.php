@@ -286,6 +286,36 @@ class ClientTest extends TestCase
         $this->assertTrue($fake->links[$a]['is_default'], 'the default passes on');
     }
 
+    public function test_the_fake_closes_an_expired_or_full_link_like_the_service(): void
+    {
+        $nine = new DateTimeImmutable('2026-10-12T09:00:00Z');
+        $fake = (new FakeCalendarClient())->travelTo(new DateTimeImmutable('2026-10-01T12:00:00Z'));
+        $ref = $fake->createLink('auth-1', ['name' => 'Once', 'duration' => 30, 'max_bookings' => 1, 'expires_at' => '2026-10-20T00:00:00Z'])['ref'];
+        $fake->withSlots($ref, [new Slot($nine, $nine->modify('+30 minutes'), ['auth-1']), new Slot($nine->modify('+1 hour'), $nine->modify('+90 minutes'), ['auth-1'])]);
+
+        $this->assertSame([0, null, '2026-10-20T00:00:00Z'], [$fake->links('auth-1')[0]['bookings_used'], $fake->links('auth-1')[0]['closed_reason'], $fake->links('auth-1')[0]['expires_at']]);
+        $fake->hold($ref, $nine, 'k1');
+        $this->assertSame([1, 'full'], [$fake->links('auth-1')[0]['bookings_used'], $fake->links('auth-1')[0]['closed_reason']]);
+        $this->assertSame([], $fake->slots($ref, $nine->modify('-1 day'), $nine->modify('+1 day')));
+        try {
+            $fake->hold($ref, $nine->modify('+1 hour'), 'k2');
+            $this->fail('refused');
+        } catch (\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected $e) {
+            $this->assertSame(['link_full', 409], [$e->errorCode, $e->status]);
+        }
+
+        $fake->updateLink($ref, ['max_bookings' => null]);
+        $fake->travelTo(new DateTimeImmutable('2026-10-21T00:00:00Z'));
+        $this->assertSame('expired', $fake->links('auth-1')[0]['closed_reason']);
+
+        try {
+            $fake->updateLink($ref, ['expires_at' => '2026-10-01T00:00:00Z', 'max_bookings' => 0]);
+            $this->fail('refused');
+        } catch (\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected $e) {
+            $this->assertCount(2, $e->errors);
+        }
+    }
+
     public function test_the_fake_reads_booking_types_back_in_the_services_shape(): void
     {
         $fake = new FakeCalendarClient();

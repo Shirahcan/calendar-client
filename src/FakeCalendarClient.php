@@ -148,7 +148,7 @@ class FakeCalendarClient implements CalendarClient
         $rows = array_values(array_filter($this->links, fn ($l) => $l['host'] === $hostAuthId));
         usort($rows, fn ($a, $b) => [$b['is_default'], $a['name']] <=> [$a['is_default'], $b['name']]);
 
-        return $rows;
+        return array_map(fn ($l) => $this->linkView($l), $rows);
     }
 
     public function linksFor(array $hostAuthIds): array
@@ -174,7 +174,7 @@ class FakeCalendarClient implements CalendarClient
             $this->setDefaultLink($ref);
         }
 
-        return $this->links[$ref];
+        return $this->linkView($this->links[$ref]);
     }
 
     public function updateLink(string $ref, array $fields): array
@@ -189,7 +189,7 @@ class FakeCalendarClient implements CalendarClient
             $this->setDefaultLink($ref);
         }
 
-        return $this->links[$ref];
+        return $this->linkView($this->links[$ref]);
     }
 
     public function seedLinks(string $hostAuthId, ?string $scheduleRef = null): array
@@ -215,7 +215,7 @@ class FakeCalendarClient implements CalendarClient
             }
         }
 
-        return $this->links[$ref];
+        return $this->linkView($this->links[$ref]);
     }
 
     public function deleteLink(string $ref): void
@@ -242,7 +242,43 @@ class FakeCalendarClient implements CalendarClient
             'external_url' => $f['external_url'] ?? null, 'external_call_url' => $f['external_call_url'] ?? null, 'duration' => (int) $f['duration'],
             'buffer_before' => $f['buffer_before'] ?? null, 'buffer_after' => $f['buffer_after'] ?? null,
             'daily_cap' => $f['daily_cap'] ?? null, 'days_ahead' => $f['days_ahead'] ?? null,
+            'expires_at' => ($f['expires_at'] ?? null) === null || $f['expires_at'] === ''
+                ? null : $this->iso(new DateTimeImmutable((string) $f['expires_at'])),
+            'max_bookings' => ($f['max_bookings'] ?? null) === null || $f['max_bookings'] === '' ? null : (int) $f['max_bookings'],
         ];
+    }
+
+    /** A stored link as the service reads it back: with how many it has given out and why it is closed. */
+    private function linkView(array $l): array
+    {
+        return $l + [
+            'bookings_used' => $l['max_bookings'] === null ? null : $this->linkBookingsUsed($l['ref']),
+            'closed_reason' => $this->linkClosed($l['ref']),
+        ];
+    }
+
+    /** As the service counts: a live hold, pending, confirmed or completed booking uses one up. */
+    private function linkBookingsUsed(string $ref): int
+    {
+        $now = $this->now()->getTimestamp();
+
+        return count(array_filter($this->bookings, fn ($b) => ($b['booking_type'] ?? null) === $ref
+            && in_array($b['state'], [Booking::PENDING, Booking::CONFIRMED, Booking::COMPLETED, Booking::HELD], true)
+            && ($b['state'] !== Booking::HELD || strtotime((string) ($b['hold_expires_at'] ?? '')) > $now)));
+    }
+
+    /** Why a link takes no bookings (inactive, expired, full), or null; null too for a type with no link. */
+    private function linkClosed(string $ref): ?string
+    {
+        $l = $this->links[$ref] ?? null;
+
+        return match (true) {
+            $l === null => null,
+            ! $l['is_active'] => 'inactive',
+            ($l['expires_at'] ?? null) !== null && strtotime($l['expires_at']) <= $this->now()->getTimestamp() => 'expired',
+            ($l['max_bookings'] ?? null) !== null && $this->linkBookingsUsed($ref) >= $l['max_bookings'] => 'full',
+            default => null,
+        };
     }
 
     /** The service's two most common refusals, so product tests see the real shape. */
@@ -255,6 +291,14 @@ class FakeCalendarClient implements CalendarClient
         $choices = array_map('intval', (array) (($this->schedulingPolicy ?? [])['duration_choices'] ?? self::SCHEDULING_DEFAULTS['duration_choices']));
         if (($creating || array_key_exists('duration', $f)) && ! in_array((int) ($f['duration'] ?? 0), $choices, true)) {
             $errors[] = 'Choose a length of '.implode(', ', $choices).' minutes.';
+        }
+        $expires = $f['expires_at'] ?? null;
+        if ($expires !== null && $expires !== '' && strtotime((string) $expires) <= $this->now()->getTimestamp()) {
+            $errors[] = 'An expiry date is in the future, or leave it empty for none.';
+        }
+        $cap = $f['max_bookings'] ?? null;
+        if ($cap !== null && $cap !== '' && ((int) $cap < 1 || (int) $cap > 10000)) {
+            $errors[] = 'A total limit is from 1 to 10000 bookings, or leave it empty for none.';
         }
         if ($errors !== []) {
             throw new CalendarRequestRejected('The link cannot be saved.', null, 422, $errors);
@@ -357,7 +401,11 @@ class FakeCalendarClient implements CalendarClient
         $this->log(__FUNCTION__, func_get_args());
 
         // The fake does not compute: seed slots of each length with withSlots(); a chosen length
-        // returns only the seeded slots of that length.
+        // returns only the seeded slots of that length. A closed link offers nothing, as the service.
+        if ($this->linkClosed($bookingTypeRef) !== null) {
+            return [];
+        }
+
         return array_values(array_filter(
             $this->slots[$bookingTypeRef] ?? [],
             fn (Slot $s) => $s->start >= $from && $s->start < $to && ! $this->taken($s->start->getTimestamp())
@@ -380,6 +428,15 @@ class FakeCalendarClient implements CalendarClient
             if (($b['idempotency_key'] ?? null) === $idempotencyKey) {
                 return Booking::fromArray($b);
             }
+        }
+
+        $closed = $this->linkClosed($bookingTypeRef);
+        if ($closed !== null) {
+            throw new CalendarRequestRejected(match ($closed) {
+                'expired' => 'This booking link has expired.',
+                'full' => 'This booking link has taken all the bookings it allows.',
+                default => 'This booking link is not taking bookings right now.',
+            }, 'link_'.$closed, 409);
         }
 
         $slot = null;
