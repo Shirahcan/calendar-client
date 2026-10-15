@@ -251,6 +251,9 @@ class FakeCalendarClient implements CalendarClient
     /** A stored link as the service reads it back: with how many it has given out and why it is closed. */
     private function linkView(array $l): array
     {
+        // A row a test wrote straight into $links may predate the limits: absent = none.
+        $l += ['expires_at' => null, 'max_bookings' => null];
+
         return $l + [
             'bookings_used' => $l['max_bookings'] === null ? null : $this->linkBookingsUsed($l['ref']),
             'closed_reason' => $this->linkClosed($l['ref']),
