@@ -270,6 +270,7 @@ abstract class AuthorityObserver
                 } else {
                     $seam->cancel($id, 'product', $s->actor(), $s->cancelReason($m));
                 }
+                $last = $this->describeIfChanged($seam, $s, $m, $id) ?? $last;
 
                 return;
             }
@@ -288,11 +289,13 @@ abstract class AuthorityObserver
             }
 
             if (! $occupiesNow) {
-                // Already over: only a changed outcome (attendance corrected after the fact).
+                // Already over: a changed outcome (attendance corrected after the fact), and its own
+                // text, which is still the record's (a call renamed for what it turned out to be).
                 $outcome = $s->outcome($m);
                 if ($outcome !== null) {
                     $last = $this->conclude($seam, $s, $m, $id, $outcome);
                 }
+                $last = $this->describeIfChanged($seam, $s, $m, $id) ?? $last;
 
                 return;
             }
@@ -303,10 +306,7 @@ abstract class AuthorityObserver
             if ($approval === 'approve') {
                 $last = $seam->approve($id, $s->actor());
             }
-            if ($m->isDirty($s->detailAttributes())) {
-                $d = $s->details($m);
-                $last = $seam->describe($id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null);
-            }
+            $last = $this->describeIfChanged($seam, $s, $m, $id) ?? $last;
             if (($r = $s->response($m)) !== null) {
                 $seam->respond($id, $r['role'], $r['response'], (array) ($r['who'] ?? []), $r['reason'] ?? null, $s->actor());
                 $last = null;   // participants changed: read it again
@@ -317,6 +317,17 @@ abstract class AuthorityObserver
                 $cache->put($last);
             }
         }
+    }
+
+    /** The record's own text changed (title, description, location): the service's copy follows. */
+    private function describeIfChanged(Seam $seam, HeldBookingSubject $s, Model $m, string $id): ?\Shirahcan\CalendarClient\Booking
+    {
+        if (! $m->isDirty($s->detailAttributes())) {
+            return null;
+        }
+        $d = $s->details($m);
+
+        return $seam->describe($id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null);
     }
 
     /** It ended: completed (once started), then whether the person came. */

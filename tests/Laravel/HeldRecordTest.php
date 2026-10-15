@@ -315,6 +315,20 @@ class HeldRecordTest extends TestCase
         $this->assertSame('completed', $this->fresh($m)->status);
     }
 
+    /** A call that is over is still the record: renaming it for what it turned out to be reaches the service. */
+    public function test_an_ended_meeting_can_still_be_retitled(): void
+    {
+        $m = $this->fresh($this->book());
+        $this->fake->travelTo(new DateTimeImmutable('2026-10-07T15:20:00Z'));
+        $m->update(['status' => 'completed']);
+
+        $this->fresh($m)->update(['title' => 'Screening']);
+
+        $this->assertSame('Screening', $this->fake->bookings[$m->calendar_booking_id]['title']);
+        $this->assertSame('Screening', $this->fresh($m)->title);
+        $this->assertSame('completed', $this->fresh($m)->status);
+    }
+
     public function test_the_client_confirming_is_their_answer_on_the_booking(): void
     {
         $m = $this->fresh($this->book());
