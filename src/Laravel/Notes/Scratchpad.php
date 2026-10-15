@@ -18,6 +18,10 @@ class Scratchpad
     /** @return array{content: string, updated_at: ?string} */
     public function draft(ScratchpadViewer $viewer): array
     {
+        // Not on the service yet: nothing has been written on it, so an empty pad.
+        if ($viewer->bookingId === null) {
+            return ['content' => '', 'updated_at' => null];
+        }
         $d = $this->client()->draft($viewer->booking(), $viewer->userId);
 
         return ['content' => (string) ($d['content'] ?? ''), 'updated_at' => $d['updated_at'] ?? null];

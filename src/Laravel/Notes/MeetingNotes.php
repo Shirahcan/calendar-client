@@ -18,6 +18,11 @@ class MeetingNotes
     /** @return list<array<string, mixed>> each note with `mine`, `private`, `author_name` and its `actions` */
     public function list(ScratchpadViewer $viewer): array
     {
+        // A meeting the service does not hold yet (its history not imported) has no notes there:
+        // an empty list, never a server error on every older meeting's page.
+        if ($viewer->bookingId === null) {
+            return [];
+        }
         $notes = $this->client()->notes($viewer->booking(), $viewer->userId);
         $names = $this->names(array_values(array_unique(array_column($notes, 'author_auth_id'))));
 

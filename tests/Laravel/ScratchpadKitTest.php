@@ -21,7 +21,7 @@ use Shirahcan\CalendarClient\Laravel\Notes\ScratchpadViewer;
 /** A product's access rule: the "X-User" header names a host of meeting m-1, nothing else. */
 class HeaderAccess implements ScratchpadAccess
 {
-    public static string $booking = '';
+    public static ?string $booking = '';
 
     public function viewer(Request $request, string $meetingId): ?ScratchpadViewer
     {
@@ -284,6 +284,14 @@ class ScratchpadKitTest extends TestCase
         $this->as('host')->patchJson("/api/meetings/m-1/notes/{$shared['id']}", ['content' => 'Client has funds (verified)'])
             ->assertOk()->assertJsonPath('data.content', 'Client has funds (verified)');
         $this->as('cohost')->deleteJson("/api/meetings/m-1/notes/{$shared['id']}")->assertStatus(422);
+    }
+
+    public function test_a_meeting_the_service_does_not_hold_reads_as_empty_not_an_error(): void
+    {
+        HeaderAccess::$booking = null;
+
+        $this->as('host')->getJson('/api/meetings/m-1/notes')->assertOk()->assertJsonCount(0, 'data');
+        $this->as('host')->getJson('/api/meetings/m-1/scratchpad')->assertOk()->assertJsonPath('data.content', '');
     }
 
     public function test_a_note_action_runs_and_remembers_what_it_did(): void
