@@ -251,6 +251,14 @@ class CalendarServiceClient implements CalendarClient
         ], fn ($v) => $v !== null));
     }
 
+    public function proposeTimes(string $bookingId, array $starts, string $proposedBy, ?string $actor = null, ?DateTimeInterface $expiresAt = null): array
+    {
+        return $this->send('POST', 'api/v1/bookings/'.rawurlencode($bookingId).'/proposals', array_filter([
+            'starts' => array_map(fn (DateTimeInterface $s) => $s->format(DATE_ATOM), array_values($starts)),
+            'proposed_by' => $proposedBy, 'actor' => $actor, 'expires_at' => $expiresAt?->format(DATE_ATOM),
+        ], fn ($v) => $v !== null));
+    }
+
     public function acceptProposal(string $proposalId, ?string $actor = null): Booking
     {
         return Booking::fromArray($this->send('POST', 'api/v1/proposals/'.rawurlencode($proposalId).'/accept', array_filter(['actor' => $actor])));

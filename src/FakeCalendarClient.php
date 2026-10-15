@@ -530,10 +530,58 @@ class FakeCalendarClient implements CalendarClient
     public function propose(string $bookingId, DateTimeInterface $start, string $proposedBy, ?string $actor = null, ?DateTimeInterface $expiresAt = null): array
     {
         $this->log(__FUNCTION__, func_get_args());
-        $this->find($bookingId);
-        $id = 'p-'.(count($this->proposals) + 1);
 
-        return $this->proposals[$id] = ['id' => $id, 'booking_id' => $bookingId, 'start_utc' => $this->iso(DateTimeImmutable::createFromInterface($start)), 'proposed_by' => $proposedBy, 'state' => 'open'];
+        return $this->offer($bookingId, [$start], $proposedBy, $expiresAt)['proposals'][0];
+    }
+
+    public function proposeTimes(string $bookingId, array $starts, string $proposedBy, ?string $actor = null, ?DateTimeInterface $expiresAt = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        return $this->offer($bookingId, $starts, $proposedBy, $expiresAt);
+    }
+
+    /** As the service: up to 3 distinct times, soonest first; a new offer replaces the open one. */
+    private function offer(string $bookingId, array $starts, string $proposedBy, ?DateTimeInterface $expiresAt): array
+    {
+        $b = $this->find($bookingId);
+        $times = [];
+        foreach ($starts as $s) {
+            $times[DateTimeImmutable::createFromInterface($s)->getTimestamp()] = DateTimeImmutable::createFromInterface($s);
+        }
+        ksort($times);
+        if ($times === [] || count($times) > 3) {
+            throw new CalendarRequestRejected('Offer from 1 to 3 different times.', 'invalid_request', 422);
+        }
+        foreach ($this->proposals as $id => $p) {
+            if ($p['booking_id'] === $bookingId && $p['state'] === 'open') {
+                $this->proposals[$id]['state'] = 'superseded';
+            }
+        }
+        $length = (new DateTimeImmutable($b['end_utc']))->getTimestamp() - (new DateTimeImmutable($b['start_utc']))->getTimestamp();
+        $setId = count($times) > 1 ? sprintf('set-%d', count($this->proposals) + 1) : null;
+        $made = [];
+        foreach ($times as $ts => $t) {
+            $id = 'p-'.(count($this->proposals) + 1);
+            $made[] = $this->proposals[$id] = ['id' => $id, 'booking_id' => $bookingId, 'set_id' => $setId,
+                'start_utc' => $this->iso($t), 'end_utc' => $this->iso($t->modify('+'.$length.' seconds')), 'proposed_by' => $proposedBy,
+                'expires_at' => $this->iso($expiresAt !== null ? DateTimeImmutable::createFromInterface($expiresAt) : $this->now()->modify('+48 hours')), 'state' => 'open'];
+        }
+        $this->syncOffer($bookingId);
+
+        return ['set_id' => $setId, 'proposals' => $made];
+    }
+
+    /** The booking reads its open offer back as the service writes it (`open_proposal(s)`). */
+    private function syncOffer(string $bookingId): void
+    {
+        if (! isset($this->bookings[$bookingId])) {
+            return;
+        }
+        $open = array_values(array_filter($this->proposals, fn ($p) => $p['booking_id'] === $bookingId && $p['state'] === 'open'));
+        usort($open, fn ($a, $b) => strcmp($a['start_utc'], $b['start_utc']));
+        $this->bookings[$bookingId]['open_proposals'] = $open;
+        $this->bookings[$bookingId]['open_proposal'] = $open[0] ?? null;
     }
 
     public function acceptProposal(string $proposalId, ?string $actor = null): Booking
@@ -543,6 +591,13 @@ class FakeCalendarClient implements CalendarClient
             throw new CalendarRequestRejected('This proposal is no longer open.', 'proposal_closed', 409);
         }
         $this->proposals[$proposalId]['state'] = 'accepted';
+        // The other times of the same offer close.
+        foreach ($this->proposals as $id => $other) {
+            if ($other['booking_id'] === $p['booking_id'] && $other['state'] === 'open') {
+                $this->proposals[$id]['state'] = 'superseded';
+            }
+        }
+        $this->syncOffer($p['booking_id']);
 
         return $this->reschedule($p['booking_id'], new DateTimeImmutable($p['start_utc']), $actor);
     }
@@ -550,7 +605,17 @@ class FakeCalendarClient implements CalendarClient
     public function declineProposal(string $proposalId, ?string $actor = null): array
     {
         $this->log(__FUNCTION__, func_get_args());
-        $this->proposals[$proposalId]['state'] = 'declined';
+        $p = $this->proposals[$proposalId] ?? throw new CalendarNotFound('Proposal not found.', null, 404);
+        if ($p['state'] !== 'open') {
+            throw new CalendarRequestRejected('This proposal is no longer open.', 'proposal_closed', 409);
+        }
+        // Declining an offer declines every time in it.
+        foreach ($this->proposals as $id => $other) {
+            if ($id === $proposalId || (($p['set_id'] ?? null) !== null && ($other['set_id'] ?? null) === $p['set_id'] && $other['state'] === 'open')) {
+                $this->proposals[$id]['state'] = 'declined';
+            }
+        }
+        $this->syncOffer($p['booking_id']);
 
         return $this->proposals[$proposalId];
     }

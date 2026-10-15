@@ -258,6 +258,27 @@ class ClientTest extends TestCase
         $this->assertSame([$b->id], array_keys($fake->bookings([$b->id, 'missing'])));
     }
 
+    public function test_the_fake_offers_several_times_like_the_service(): void
+    {
+        $fake = (new FakeCalendarClient())->travelTo(new DateTimeImmutable('2026-10-01T12:00:00Z'));
+        $b = $fake->createMeeting(['auth-1'], new DateTimeImmutable('2026-10-12T14:00:00Z'), new DateTimeImmutable('2026-10-12T15:00:00Z'), 'k-o');
+
+        $offer = $fake->proposeTimes($b->id, [new DateTimeImmutable('2026-10-13T16:00:00Z'), new DateTimeImmutable('2026-10-13T15:00:00Z')], 'host');
+        $this->assertNotNull($offer['set_id']);
+        $this->assertSame(['2026-10-13T15:00:00Z', '2026-10-13T16:00:00Z'], array_column($offer['proposals'], 'start_utc'));
+        $this->assertSame('2026-10-13T17:00:00Z', $offer['proposals'][1]['end_utc'], 'each time keeps the length');
+        $this->assertCount(2, $fake->booking($b->id)->raw['open_proposals']);
+
+        $moved = $fake->acceptProposal($offer['proposals'][1]['id']);
+        $this->assertSame('2026-10-13T16:00:00Z', $moved->raw['start_utc']);
+        $this->assertSame('superseded', $fake->proposals[$offer['proposals'][0]['id']]['state']);
+        $this->assertSame([], $fake->booking($b->id)->raw['open_proposals']);
+
+        $again = $fake->proposeTimes($b->id, [new DateTimeImmutable('2026-10-14T15:00:00Z'), new DateTimeImmutable('2026-10-14T16:00:00Z')], 'host');
+        $fake->declineProposal($again['proposals'][0]['id']);
+        $this->assertSame(['declined', 'declined'], [$fake->proposals[$again['proposals'][0]['id']]['state'], $fake->proposals[$again['proposals'][1]['id']]['state']]);
+    }
+
     public function test_the_fake_manages_links_like_the_service(): void
     {
         $fake = new FakeCalendarClient();

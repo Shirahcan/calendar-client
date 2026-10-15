@@ -154,6 +154,17 @@ interface CalendarClient
     /** @param 'host'|'booker' $proposedBy */
     public function propose(string $bookingId, DateTimeInterface $start, string $proposedBy, ?string $actor = null, ?DateTimeInterface $expiresAt = null): array;
 
+    /**
+     * Offer several times at once (up to 3): each is held while the offer is open; the booker
+     * accepts one (the others close) or declines the offer (all close). A new offer replaces any
+     * open one. Read back on the booking as `open_proposals` (raw), soonest first.
+     *
+     * @param  list<DateTimeInterface>  $starts
+     * @param  'host'|'booker'  $proposedBy
+     * @return array{set_id: ?string, proposals: list<array{id: string, booking_id: string, set_id: ?string, start_utc: string, end_utc: string, proposed_by: string, expires_at: string, state: string}>}
+     */
+    public function proposeTimes(string $bookingId, array $starts, string $proposedBy, ?string $actor = null, ?DateTimeInterface $expiresAt = null): array;
+
     public function acceptProposal(string $proposalId, ?string $actor = null): Booking;
 
     public function declineProposal(string $proposalId, ?string $actor = null): array;
