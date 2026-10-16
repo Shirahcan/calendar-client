@@ -18,7 +18,11 @@ interface CalendarClient
 
     public function upsertHost(string $authId, ?string $name = null, ?string $zone = null): array;
 
-    /** @param array $spec schema-1 availability spec (portify docs/plans/calendar-service-2026-10-02/04) */
+    /**
+     * @param array $spec schema-1 availability spec (portify docs/plans/calendar-service-2026-10-02/04).
+     *                    A weekly, period, dates or overrides row may set `length` (minutes): the meeting
+     *                    length those windows offer to a type with `length_from_windows`.
+     */
     public function upsertSchedule(string $ref, ?string $hostAuthId, array $spec): array;
 
     public function schedule(string $ref): array;
@@ -33,7 +37,11 @@ interface CalendarClient
 
     public function deleteSchedule(string $ref): void;
 
-    /** @param array $definition duration, step, buffers, notice, horizon, daily_cap, approval, hold_ttl, hosts{mode, members[{host, schedule}]} */
+    /**
+     * @param array $definition duration, step, buffers, notice, horizon, daily_cap, approval, hold_ttl,
+     *                          length_from_windows (offer each window at the `length` its schedule sets),
+     *                          hosts{mode, members[{host, schedule}]}
+     */
     public function upsertBookingType(string $ref, array $definition): array;
 
     /**
