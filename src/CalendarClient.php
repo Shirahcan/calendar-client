@@ -45,6 +45,14 @@ interface CalendarClient
     public function upsertBookingType(string $ref, array $definition): array;
 
     /**
+     * Stop offering a booking type. It is retired, not removed (past bookings still name it): it
+     * takes no new booking and no longer holds its schedules, so they can then be deleted. Sending
+     * it again offers it again. Already retired or unknown is a no-op. A booking link's type is
+     * refused (CalendarRequestRejected): delete the link instead.
+     */
+    public function retireBookingType(string $ref): void;
+
+    /**
      * Several of this product's booking types in one call, keyed by ref (missing ones left out).
      *
      * @param list<string> $refs

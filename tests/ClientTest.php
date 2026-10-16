@@ -180,6 +180,27 @@ class ClientTest extends TestCase
         $this->assertSame('/api/v1/connections/adopt', $this->history[2]['request']->getUri()->getPath());
     }
 
+    public function test_retiring_a_booking_type_deletes_it_on_the_service_and_unknown_is_a_no_op(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['success' => true, 'data' => ['ref' => 'interview:7:60']]),
+            $this->json(404, ['success' => false, 'message' => 'Booking type not found.']),
+        );
+
+        $client->retireBookingType('interview:7:60');
+        $client->retireBookingType('gone');
+
+        $this->assertSame('DELETE', $this->history[0]['request']->getMethod());
+        $this->assertSame('/api/v1/booking-types/interview%3A7%3A60', $this->history[0]['request']->getUri()->getPath());
+
+        $fake = new \Shirahcan\CalendarClient\FakeCalendarClient();
+        $fake->upsertBookingType('t', ['duration' => 30]);
+        $fake->retireBookingType('t');
+        $this->assertArrayHasKey('t', $fake->retiredTypes);
+        $fake->upsertBookingType('t', ['duration' => 30]);
+        $this->assertSame([], $fake->retiredTypes, 'sending it again offers it again');
+    }
+
     public function test_call_tools_and_call_links_hit_their_routes(): void
     {
         $client = $this->client(

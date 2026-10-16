@@ -77,6 +77,15 @@ class CalendarServiceClient implements CalendarClient
         return $this->send('PUT', 'api/v1/booking-types/'.rawurlencode($ref), $definition);
     }
 
+    public function retireBookingType(string $ref): void
+    {
+        try {
+            $this->send('DELETE', 'api/v1/booking-types/'.rawurlencode($ref));
+        } catch (CalendarNotFound) {
+            // Never there: nothing offers it.
+        }
+    }
+
     public function links(string $hostAuthId): array
     {
         return array_values($this->send('GET', 'api/v1/hosts/'.rawurlencode($hostAuthId).'/links'));

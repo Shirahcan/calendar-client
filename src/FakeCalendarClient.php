@@ -135,8 +135,20 @@ class FakeCalendarClient implements CalendarClient
     public function upsertBookingType(string $ref, array $definition): array
     {
         $this->log(__FUNCTION__, func_get_args());
+        unset($this->retiredTypes[$ref]);   // sending a type again offers it again
 
         return $this->bookingTypes[$ref] = ['ref' => $ref] + $definition;
+    }
+
+    /** @var array<string, true> refs of booking types the product retired */
+    public array $retiredTypes = [];
+
+    public function retireBookingType(string $ref): void
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        if (isset($this->bookingTypes[$ref])) {
+            $this->retiredTypes[$ref] = true;
+        }
     }
 
     /** @var array<string, array> ref => link, in the service's shape */
