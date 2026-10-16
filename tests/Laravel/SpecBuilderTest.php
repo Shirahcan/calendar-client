@@ -116,6 +116,34 @@ class SpecBuilderTest extends TestCase
         $this->assertArrayNotHasKey('gap', $same['spec']['weekly'][0]);
     }
 
+    public function test_window_lengths_carry_each_rows_own_length_only_when_lengths_differ(): void
+    {
+        $rows = [
+            $this->row(['day' => 1, 'start' => '09:00', 'end' => '11:00', 'duration' => 60]),
+            $this->row(['day' => 1, 'start' => '14:00', 'end' => '16:00']),
+            $this->row(['day' => 4, 'start' => '09:00', 'end' => '12:00']),
+            $this->row(['kind' => 'date', 'date' => '2026-10-12', 'start' => '08:00', 'end' => '10:00', 'duration' => 60]),
+            $this->row(['kind' => 'date', 'date' => '2026-10-12', 'start' => '13:00', 'end' => '14:00']),
+        ];
+
+        $out = $this->build($rows, ['window_lengths' => true]);
+        $this->assertSame(30, $out['duration'], 'the most common length stays the type\'s');
+        $this->assertSame(
+            [['days' => ['mon'], 'start' => '09:00', 'end' => '11:00', 'length' => 60], ['days' => ['mon'], 'start' => '14:00', 'end' => '16:00'], ['days' => ['thu'], 'start' => '09:00', 'end' => '12:00']],
+            $out['spec']['weekly'],
+        );
+        $this->assertSame(
+            [['date' => '2026-10-12', 'windows' => [['13:00', '14:00']]], ['date' => '2026-10-12', 'windows' => [['08:00', '10:00']], 'length' => 60]],
+            $out['spec']['overrides'],
+        );
+
+        // Off by default, and a person with one length gets no `length` anywhere.
+        $this->assertArrayNotHasKey('length', $this->build($rows)['spec']['weekly'][0]);
+        $one = $this->build([$this->row(['duration' => 60])], ['window_lengths' => true]);
+        $this->assertArrayNotHasKey('length', $one['spec']['weekly'][0]);
+        $this->assertSame(60, $one['duration']);
+    }
+
     public function test_no_rows_is_an_empty_spec_in_the_profile_zone(): void
     {
         $this->assertSame(['schema' => 1, 'timezone' => ['zone' => self::ZONE]], $this->build([])['spec']);

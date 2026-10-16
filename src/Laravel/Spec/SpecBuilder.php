@@ -37,6 +37,10 @@ use Carbon\CarbonImmutable;
  *                       each override date carries its own `gap` (an override date: the largest
  *                       of its rows and that weekday's weekly rows), so a 5-minute Thursday is not
  *                       read as the 15-minute Monday. False (default): one buffer for the type
+ *   window_lengths     true: when the person's rows offer DIFFERENT meeting lengths, each weekly row
+ *                       and override row whose length is not the most common one carries its own
+ *                       `length`, for a booking type with `length_from_windows` (a 60-minute
+ *                       interview morning beside 30-minute afternoons). False (default): one length
  *   holidays           null (default): the spec observes no holidays. ['region' => 'CA' | 'CA-ON',
  *                       'work' => list<'Y-m-d'>]: the host observes the region's public holidays,
  *                       which the SERVICE holds, except the dates in `work` they chose to work
@@ -60,7 +64,7 @@ final class SpecBuilder
         $o = $options + [
             'zone' => 'UTC', 'periods_on' => false, 'periods' => [], 'cross_midnight' => false,
             'empty_date_closes' => false, 'midnight_end_of_day' => true, 'min_buffer' => 0, 'today' => null,
-            'day_gaps' => false, 'holidays' => null,
+            'day_gaps' => false, 'holidays' => null, 'window_lengths' => false,
         ];
         $cutoff = ($o['today'] ?? CarbonImmutable::now('UTC'))->setTimezone('UTC')->subDays(self::PAST_DAYS_KEPT)->format('Y-m-d');
         $rows = array_map(fn ($r) => $r + ['day' => null, 'date' => null, 'to' => null, 'start' => null, 'end' => null,
@@ -81,6 +85,9 @@ final class SpecBuilder
         if (count(array_unique($durations)) > 1) {
             $notes[] = 'mixed_durations:'.implode(',', self::sortedUnique($durations));
         }
+        // A row's own length, only where it says something the type's one length cannot.
+        $lengths = $o['window_lengths'] && count(array_unique($durations)) > 1;
+        $lengthOf = fn (array $r) => $lengths && $r['duration'] !== null && (int) $r['duration'] !== $duration ? (int) $r['duration'] : null;
 
         $weeklyBuffers = array_map(fn ($r) => max((int) $r['buffer'], (int) $o['min_buffer']), array_filter($timed, fn ($r) => $r['kind'] === 'weekly'));
         if (count(array_unique($weeklyBuffers)) > 1) {
@@ -142,7 +149,8 @@ final class SpecBuilder
                     continue;
                 }
                 $weekly[] = array_filter(['days' => [self::DAYS[(int) $r['day']]], 'start' => $window[0], 'end' => $window[1],
-                    'valid_from' => $from, 'valid_until' => $until, 'gap' => $gaps ? $floored($r) : null], fn ($v) => $v !== null);
+                    'valid_from' => $from, 'valid_until' => $until, 'gap' => $gaps ? $floored($r) : null,
+                    'length' => $lengthOf($r)], fn ($v) => $v !== null);
 
                 continue;
             }
@@ -162,8 +170,9 @@ final class SpecBuilder
                 $dow = (int) CarbonImmutable::parse($date)->dayOfWeek;
                 $overrideGap[$date] = max($overrideGap[$date] ?? 0, $weekdayGap[$dow] ?? 0, $floored($r));
             }
+            // Grouped by the row's own length (0 = the type's): one override row per length.
             if ($window !== null) {
-                $overrides[$date][] = $window;
+                $overrides[$date][$lengthOf($r) ?? 0][] = $window;
             } elseif ($o['empty_date_closes']) {
                 $overrides[$date] ??= [];
             }
@@ -175,8 +184,20 @@ final class SpecBuilder
         }
         if ($overrides !== []) {
             ksort($overrides);
-            $spec['overrides'] = array_map(fn ($date, $w) => ['date' => $date, 'windows' => self::merge($w)]
-                + (isset($overrideGap[$date]) ? ['gap' => $overrideGap[$date]] : []), array_keys($overrides), $overrides);
+            $rows = [];
+            foreach ($overrides as $date => $byLength) {
+                $gap = isset($overrideGap[$date]) ? ['gap' => $overrideGap[$date]] : [];
+                if ($byLength === []) {
+                    $rows[] = ['date' => $date, 'windows' => []] + $gap;   // a closed date
+
+                    continue;
+                }
+                ksort($byLength);
+                foreach ($byLength as $length => $w) {
+                    $rows[] = ['date' => $date, 'windows' => self::merge($w)] + $gap + ($length > 0 ? ['length' => $length] : []);
+                }
+            }
+            $spec['overrides'] = $rows;
         }
         if ($blocks !== []) {
             $blocks = array_values(array_unique($blocks, SORT_REGULAR));
