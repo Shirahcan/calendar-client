@@ -47,6 +47,14 @@ class KitCallSubject extends AbstractBookingSubject
 {
     public static bool $on = true;
 
+    /** Why the record moves (optional subject method; read by the observer on a move). */
+    public static ?string $why = null;
+
+    public function moveReason(Model $m): ?string
+    {
+        return self::$why;
+    }
+
     protected string $model = KitCall::class;
 
     protected string $refPrefix = 'call';
@@ -205,6 +213,13 @@ class AuthorityTest extends TestCase
         $c = $this->newCall();
         $c->update(['starts_at' => '2026-10-08 16:00:00', 'ends_at' => '2026-10-08 16:30:00']);
         $this->assertSame('2026-10-08T16:00:00Z', $this->remote($c)['start_utc']);
+
+        KitCallSubject::$why = 'Panel clash';
+        $c->update(['starts_at' => '2026-10-08 17:00:00', 'ends_at' => '2026-10-08 17:30:00']);
+        KitCallSubject::$why = null;
+        $moved = collect($this->fake->history($c->fresh()->calendar_booking_id))->where('event', 'rescheduled')->last();
+        $this->assertSame('Panel clash', $moved['reason'], 'a subject that can say why a record moved has it kept');
+        $this->assertSame('2026-10-08T16:00:00Z', $moved['old_start_utc']);
 
         $c->update(['guests' => ['guest', 'panel']]);
         $this->assertSame(['host', 'guest', 'panel'], $this->remote($c)['hosts']);

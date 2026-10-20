@@ -216,7 +216,7 @@ abstract class AuthorityObserver
 
         if ($moved) {
             // Throws Refusal: the move is not written.
-            $seam->reschedule($m->getAttribute($col), $s->start($m), $s->end($m), true, $s->actor());
+            $seam->reschedule($m->getAttribute($col), $s->start($m), $s->end($m), true, $s->actor(), null, self::moveReason($s, $m));
         }
         if ($approval === 'approve') {
             $seam->approve($m->getAttribute($col), $s->actor());
@@ -301,7 +301,7 @@ abstract class AuthorityObserver
             }
 
             if ($m->isDirty($s->moveAttributes())) {
-                $last = $seam->reschedule($id, $s->start($m), $s->end($m), true, $s->actor());
+                $last = $seam->reschedule($id, $s->start($m), $s->end($m), true, $s->actor(), null, self::moveReason($s, $m));
             }
             if ($approval === 'approve') {
                 $last = $seam->approve($id, $s->actor());
@@ -358,5 +358,14 @@ abstract class AuthorityObserver
             report($e);
             CancelBooking::dispatch($calendarBookingId)->delay(now()->addMinute());
         }
+    }
+
+    /**
+     * Why it moved, for the booking's history: a subject that can say implements
+     * `moveReason(Model $m): ?string` (optional, so products without it are unchanged).
+     */
+    private static function moveReason(object $s, Model $m): ?string
+    {
+        return method_exists($s, 'moveReason') ? $s->moveReason($m) : null;
     }
 }
