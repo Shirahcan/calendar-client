@@ -99,6 +99,16 @@ class KitTest extends TestCase
         $this->assertNull($seam->promote('booking:none'), 'no mirror: nothing to promote');
     }
 
+    public function test_a_move_keeps_who_and_why_on_the_history(): void
+    {
+        $b = $this->meeting();
+        (new Seam())->reschedule($b->id, new DateTimeImmutable('2026-10-08T15:00:00Z'), new DateTimeImmutable('2026-10-08T15:30:00Z'), true, 'app:user:7', 'host', 'A clash');
+
+        $moved = collect($this->fake->history($b->id))->firstWhere('event', 'rescheduled');
+        $this->assertSame(['app:user:7', 'A clash'], [$moved['actor'], $moved['reason']]);
+        $this->assertSame('2026-10-07T15:00:00Z', $moved['old_start_utc']);
+    }
+
     public function test_a_refusal_on_an_api_route_answers_with_its_status_and_reason(): void
     {
         RendersRefusals::register(new Exceptions($this->app->make(\Illuminate\Contracts\Debug\ExceptionHandler::class)));

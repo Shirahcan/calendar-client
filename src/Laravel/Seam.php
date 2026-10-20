@@ -88,9 +88,10 @@ class Seam
 
     /** A move made by the product or a host: their free time is enough (`$hostOverride`). */
     /** `by`: a booker is held to the policy's reschedule notice (refused with its sentence). */
-    public function reschedule(string $bookingId, DateTimeInterface $start, DateTimeInterface $end, bool $hostOverride = true, ?string $actor = null, ?string $by = null): Booking
+    /** `reason`: the mover's words, kept on the booking's history ("Rescheduled ... Reason: ..."). */
+    public function reschedule(string $bookingId, DateTimeInterface $start, DateTimeInterface $end, bool $hostOverride = true, ?string $actor = null, ?string $by = null, ?string $reason = null): Booking
     {
-        return $this->call(fn () => $this->client()->reschedule($bookingId, $start, $actor, null, $end, $hostOverride, $by));
+        return $this->call(fn () => $this->client()->reschedule($bookingId, $start, $actor, $reason, $end, $hostOverride, $by));
     }
 
     public function approve(string $bookingId, ?string $actor = null): Booking
