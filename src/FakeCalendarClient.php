@@ -779,10 +779,12 @@ class FakeCalendarClient implements CalendarClient
     {
         $this->log(__FUNCTION__, func_get_args());
         $b = $this->find($bookingId);
-        if (! in_array($b['state'], [Booking::PENDING, Booking::CONFIRMED], true)) {
+        // As the service: a booking that never recorded its booker may have them recorded once, in any state.
+        $recordsBooker = $role === 'booker' && collect((array) ($b['participants'] ?? []))->where('role', 'booker')->isEmpty();
+        if (! $recordsBooker && ! in_array($b['state'], [Booking::PENDING, Booking::CONFIRMED], true)) {
             throw new CalendarRequestRejected("A booking that is {$b['state']} cannot be given a participant.", 'invalid_state', 409);
         }
-        if (! in_array($role, ['attendee', 'guest'], true) || (empty($who['auth_id']) && empty($who['email']))) {
+        if ((! $recordsBooker && ! in_array($role, ['attendee', 'guest'], true)) || (empty($who['auth_id']) && empty($who['email']))) {
             throw new CalendarRequestRejected('Say who they are (auth_id or email); role is attendee or guest.', 'invalid_request', 422);
         }
         $participants = array_values((array) ($b['participants'] ?? []));
