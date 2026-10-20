@@ -404,6 +404,16 @@ class CalendarServiceClient implements CalendarClient
         return Booking::fromArray($this->send('GET', 'api/v1/bookings/'.rawurlencode($bookingId)));
     }
 
+    public function history(string $bookingId): array
+    {
+        $raw = $this->send('GET', 'api/v1/bookings/'.rawurlencode($bookingId), ['history' => 1]);
+
+        return array_values(array_map(fn (array $c) => $c + [
+            'from_state' => null, 'to_state' => null, 'actor' => null, 'reason' => null, 'at' => null,
+            'old_start_utc' => null, 'old_end_utc' => null, 'new_start_utc' => null, 'new_end_utc' => null,
+        ], (array) ($raw['history'] ?? [])));
+    }
+
     public function mirror(string $ref, array $hostAuthIds, DateTimeInterface $start, DateTimeInterface $end): array
     {
         return $this->send('PUT', 'api/v1/mirror/'.rawurlencode($ref), [

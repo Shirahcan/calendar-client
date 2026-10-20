@@ -791,4 +791,30 @@ class ClientTest extends TestCase
         $this->assertSame('/api/v1/bookings/b-1/participants/7', $this->history[0]['request']->getUri()->getPath());
         $this->assertSame(['zone' => 'America/Toronto', 'actor' => 'app:user:1'], json_decode((string) $this->history[0]['request']->getBody(), true));
     }
+    public function test_history_asks_for_the_booking_with_its_changes_and_fills_every_field(): void
+    {
+        $rows = $this->client($this->json(200, ['success' => true, 'data' => $this->bookingData(['history' => [
+            ['event' => 'rescheduled', 'actor' => 'app:user:1', 'at' => '2026-10-02T09:00:00Z',
+                'old_start_utc' => '2026-10-12T13:00:00Z', 'new_start_utc' => '2026-10-13T13:00:00Z'],
+        ]])]))->history('b-1');
+
+        $this->assertSame('/api/v1/bookings/b-1', $this->history[0]['request']->getUri()->getPath());
+        $this->assertSame('history=1', $this->history[0]['request']->getUri()->getQuery());
+        $this->assertSame('2026-10-12T13:00:00Z', $rows[0]['old_start_utc']);
+        $this->assertNull($rows[0]['reason']);
+        $this->assertArrayHasKey('new_end_utc', $rows[0]);
+    }
+
+    public function test_the_fake_records_what_the_service_records(): void
+    {
+        $fake = (new \Shirahcan\CalendarClient\FakeCalendarClient())->travelTo(new DateTimeImmutable('2026-10-05T08:00:00Z'));
+        $b = $fake->createMeeting(['auth-1'], new DateTimeImmutable('2026-10-12T13:00:00Z'), new DateTimeImmutable('2026-10-12T14:00:00Z'), 'k-1');
+        $fake->reschedule($b->id, new DateTimeImmutable('2026-10-13T13:00:00Z'), 'app:user:1', 'clash');
+        $fake->cancel($b->id, 'host', 'app:user:2', 'no longer needed');
+
+        $history = $fake->history($b->id);
+        $this->assertSame(['created', 'rescheduled', 'cancelled'], array_column($history, 'event'));
+        $this->assertSame(['2026-10-12T13:00:00Z', '2026-10-13T13:00:00Z'], [$history[1]['old_start_utc'], $history[1]['new_start_utc']]);
+        $this->assertSame(['app:user:2', 'no longer needed'], [$history[2]['actor'], $history[2]['reason']]);
+    }
 }

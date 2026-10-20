@@ -68,6 +68,9 @@ class FakeCalendarClient implements CalendarClient
     /** @var array<string, array{hosts: list<string>, start: string, end: string}> ref => live mirror */
     public array $mirrors = [];
 
+    /** @var array<string, list<array<string, ?string>>> what happened to each booking, as the service records it */
+    public array $histories = [];
+
     /** @var list<array> every row handed to adoptConnections */
     public array $adopted = [];
 
@@ -496,6 +499,8 @@ class FakeCalendarClient implements CalendarClient
             // As the service: any host who approves their own bookings makes it pending too.
             || array_filter((array) ($this->bookings[$bookingId]['hosts'] ?? []), fn ($h) => (bool) ($this->hostPreferences[$h]['requires_approval'] ?? false)) !== [];
 
+        $this->record($bookingId, 'confirmed', Booking::HELD, $needsApproval ? Booking::PENDING : Booking::CONFIRMED, $actor);
+
         return $this->move($bookingId, [Booking::HELD], $needsApproval ? Booking::PENDING : Booking::CONFIRMED);
     }
 
@@ -504,6 +509,9 @@ class FakeCalendarClient implements CalendarClient
         // As the service: approving a booking that is already confirmed changes nothing.
         $was = $this->find($bookingId)['state'];
         $booking = $this->move($bookingId, [Booking::PENDING, Booking::CONFIRMED], Booking::CONFIRMED);
+        if ($was === Booking::PENDING) {
+            $this->record($bookingId, 'approved', $was, Booking::CONFIRMED, $actor);
+        }
 
         return $was === Booking::PENDING ? $this->save(['decided_at' => $this->iso($this->now()), 'decided_actor' => $actor] + $booking->raw) : $booking;
     }
@@ -512,6 +520,9 @@ class FakeCalendarClient implements CalendarClient
     {
         $was = $this->find($bookingId)['state'];
         $booking = $this->move($bookingId, [Booking::PENDING, Booking::DECLINED], Booking::DECLINED);
+        if ($was === Booking::PENDING) {
+            $this->record($bookingId, 'declined', $was, Booking::DECLINED, $actor, $reason);
+        }
 
         return $was === Booking::PENDING ? $this->save(['decided_at' => $this->iso($this->now()), 'decided_actor' => $actor, 'decision_reason' => $reason] + $booking->raw) : $booking;
     }
@@ -533,8 +544,11 @@ class FakeCalendarClient implements CalendarClient
         $length = $end !== null
             ? $end->getTimestamp() - $start->getTimestamp()
             : (new DateTimeImmutable($b['end_utc']))->getTimestamp() - (new DateTimeImmutable($b['start_utc']))->getTimestamp();
+        $old = [$b['start_utc'], $b['end_utc']];
         $b['start_utc'] = $this->iso(DateTimeImmutable::createFromInterface($start));
         $b['end_utc'] = $this->iso((DateTimeImmutable::createFromInterface($start))->modify("+{$length} seconds"));
+        $this->record($bookingId, 'rescheduled', $b['state'], $b['state'], $actor, $reason,
+            ['old_start_utc' => $old[0], 'old_end_utc' => $old[1], 'new_start_utc' => $b['start_utc'], 'new_end_utc' => $b['end_utc']]);
 
         return $this->save($b);
     }
@@ -637,7 +651,9 @@ class FakeCalendarClient implements CalendarClient
         if (($by === 'host' || $by === 'booker') && isset($this->bookings[$bookingId])) {
             $this->assertNotice($this->bookings[$bookingId], $this->cancelNoticeMinutes, 'Cancellation');
         }
+        $from = $this->find($bookingId)['state'];
         $b = $this->move($bookingId, [Booking::HELD, Booking::PENDING, Booking::CONFIRMED], Booking::CANCELLED);
+        $this->record($bookingId, 'cancelled', $from, Booking::CANCELLED, $actor, $reason);
 
         return $this->save(['cancelled_by' => $by, 'cancel_reason' => $reason, 'cancelled_at' => $this->iso($this->now()), 'cancelled_actor' => $actor] + $b->raw);
     }
@@ -983,6 +999,7 @@ class FakeCalendarClient implements CalendarClient
         ]);
         $this->bookings[$new->id]['rebooked_from'] = $bookingId;
         $this->bookings[$bookingId]['rebooked_to'] = $new->id;
+        $this->record($bookingId, 'rebooked', $old['state'], $old['state'], $actor, $by);
 
         return Booking::fromArray($this->bookings[$new->id]);
     }
@@ -1002,6 +1019,7 @@ class FakeCalendarClient implements CalendarClient
             throw new SlotUnavailable('That time is no longer available. Please pick another.', 'slot_unavailable', 409);
         }
         $id = sprintf('%08x-0000-4000-9000-%012x', count($this->bookings) + 1, random_int(0, 0xFFFFFFFFFFFF));
+        $this->record($id, 'created', null, empty($details['pending']) ? Booking::CONFIRMED : Booking::PENDING, $details['actor'] ?? null);
 
         return $this->save([
             'id' => $id, 'state' => empty($details['pending']) ? Booking::CONFIRMED : Booking::PENDING, 'kind' => 'host_created', 'start_utc' => $this->iso(DateTimeImmutable::createFromInterface($start)),
@@ -1018,6 +1036,24 @@ class FakeCalendarClient implements CalendarClient
         $this->log(__FUNCTION__, func_get_args());
 
         return Booking::fromArray($this->find($bookingId));
+    }
+
+    public function history(string $bookingId): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        $b = $this->find($bookingId);
+        $blank = ['from_state' => null, 'to_state' => null, 'actor' => null, 'reason' => null, 'at' => null,
+            'old_start_utc' => null, 'old_end_utc' => null, 'new_start_utc' => null, 'new_end_utc' => null];
+
+        // An imported booking brings its history with it; then everything since, as it happened.
+        return array_values(array_map(fn (array $c) => $c + $blank, [...(array) ($b['history'] ?? []), ...($this->histories[$bookingId] ?? [])]));
+    }
+
+    /** @param array<string, ?string> $times a move's old and new times */
+    private function record(string $id, string $event, ?string $from, ?string $to, ?string $actor = null, ?string $reason = null, array $times = []): void
+    {
+        $this->histories[$id][] = ['event' => $event, 'from_state' => $from, 'to_state' => $to, 'actor' => $actor,
+            'reason' => $reason, 'at' => $this->iso($this->now())] + $times;
     }
 
     public function events(string $hostAuthId, DateTimeInterface $from, DateTimeInterface $to): array

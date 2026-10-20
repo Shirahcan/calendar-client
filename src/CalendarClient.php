@@ -292,6 +292,15 @@ interface CalendarClient
     public function booking(string $bookingId): Booking;
 
     /**
+     * Everything that happened to a booking, oldest first: who did what, when and why (the actor is
+     * the product's own string, e.g. `portify:user:4`), and for a move where it was and where it went.
+     * The one record a product shows as "Rescheduled on / by", "Cancelled on / by".
+     *
+     * @return list<array{event: string, from_state: ?string, to_state: ?string, actor: ?string, reason: ?string, at: ?string, old_start_utc: ?string, old_end_utc: ?string, new_start_utc: ?string, new_end_utc: ?string}>
+     */
+    public function history(string $bookingId): array;
+
+    /**
      * Several of this product's bookings in one call (a calendar view, a list), keyed by id;
      * missing ones left out.
      *
