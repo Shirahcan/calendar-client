@@ -1108,11 +1108,11 @@ class FakeCalendarClient implements CalendarClient
         ]);
     }
 
-    public function updateDetails(string $bookingId, ?string $title = null, ?string $description = null, ?string $location = null): Booking
+    public function updateDetails(string $bookingId, ?string $title = null, ?string $description = null, ?string $location = null, ?string $zone = null): Booking
     {
         $this->log(__FUNCTION__, func_get_args());
         $b = $this->find($bookingId);
-        foreach (['title' => $title, 'description' => $description, 'location' => $location] as $k => $v) {
+        foreach (['title' => $title, 'description' => $description, 'location' => $location, 'zone' => $zone] as $k => $v) {
             if ($v !== null) {
                 $b[$k] = $v;
             }

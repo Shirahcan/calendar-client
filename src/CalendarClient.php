@@ -148,8 +148,11 @@ interface CalendarClient
      */
     public function rebook(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $by = null, ?DateTimeInterface $end = null, ?string $productRef = null): Booking;
 
-    /** The product's text for the host's calendar copy; a confirmed booking's copy is rewritten. */
-    public function updateDetails(string $bookingId, ?string $title = null, ?string $description = null, ?string $location = null): Booking;
+    /**
+     * The product's text for the host's calendar copy; a confirmed booking's copy is rewritten.
+     * `$zone`: the zone it was booked in (IANA). Null leaves each field as it is.
+     */
+    public function updateDetails(string $bookingId, ?string $title = null, ?string $description = null, ?string $location = null, ?string $zone = null): Booking;
 
     /**
      * Which hosts' external calendars receive the booking's copy: a subset of its hosts, or null

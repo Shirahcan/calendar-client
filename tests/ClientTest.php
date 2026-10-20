@@ -488,13 +488,13 @@ class ClientTest extends TestCase
         );
 
         $client->reschedule('b1', new DateTimeImmutable('2026-10-13T00:00:00Z'), null, null, new DateTimeImmutable('2026-10-13T00:30:00Z'), true);
-        $client->updateDetails('b1', 'Consultation', null, 'https://x.test/m/1');
+        $client->updateDetails('b1', 'Consultation', null, 'https://x.test/m/1', 'Africa/Lagos');
         $client->promoteMirror('meeting:7', [['provider' => 'google', 'account_email' => 'a@b.c', 'event_id' => 'e1']]);
 
         $body = fn (int $i) => json_decode((string) $this->history[$i]['request']->getBody(), true);
         $this->assertSame(['start' => '2026-10-13T00:00:00+00:00', 'end' => '2026-10-13T00:30:00+00:00', 'host_override' => true], $body(0));
         $this->assertSame('PATCH', $this->history[1]['request']->getMethod());
-        $this->assertSame(['title' => 'Consultation', 'location' => 'https://x.test/m/1'], $body(1));
+        $this->assertSame(['title' => 'Consultation', 'location' => 'https://x.test/m/1', 'zone' => 'Africa/Lagos'], $body(1));
         $this->assertSame('/api/v1/mirror/meeting%3A7/promote', $this->history[2]['request']->getUri()->getPath());
     }
 

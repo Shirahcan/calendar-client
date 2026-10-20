@@ -79,7 +79,7 @@ abstract class AuthorityObserver
             // booking's, and nothing else will carry it there. Throws Refusal: not written.
             $d = $s->details($m);
             if ($d !== []) {
-                app(HeldBookings::class)->put((new Seam())->describe($id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null));
+                app(HeldBookings::class)->put((new Seam())->describe($id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null, false, $d['zone'] ?? null));
             }
 
             return;
@@ -208,7 +208,7 @@ abstract class AuthorityObserver
                 // columns stop being written.
                 $d = $s->details($m);
                 if ($d !== []) {
-                    $seam->describe($linked->id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null);
+                    $seam->describe($linked->id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null, false, $d['zone'] ?? null);
                 }
                 app(HeldBookings::class)->forget($linked->id);
             }
@@ -327,7 +327,7 @@ abstract class AuthorityObserver
         }
         $d = $s->details($m);
 
-        return $seam->describe($id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null);
+        return $seam->describe($id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null, false, $d['zone'] ?? null);
     }
 
     /** It ended: completed (once started), then whether the person came. */

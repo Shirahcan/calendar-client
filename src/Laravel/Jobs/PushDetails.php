@@ -57,7 +57,7 @@ class PushDetails implements ShouldQueue, ShouldBeUniqueUntilProcessing
         }
 
         try {
-            (new Seam())->describe($id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null, array_key_exists('write_to', $d) ? $d['write_to'] : false);
+            (new Seam())->describe($id, $d['title'] ?? null, $d['description'] ?? null, $d['location'] ?? null, array_key_exists('write_to', $d) ? $d['write_to'] : false, $d['zone'] ?? null);
         } catch (Refusal $e) {
             if ($e->cause instanceof CalendarNotFound) {
                 return;   // the booking is gone; nothing to describe

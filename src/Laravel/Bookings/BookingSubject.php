@@ -49,7 +49,8 @@ interface BookingSubject
 
     /**
      * The calendar copy: ['title' => ?string, 'description' => ?string, 'location' => ?string,
-     * 'write_to' => list<string>|null|false]. Null = leave the service's copy alone.
+     * 'zone' => ?string (the zone it was booked in), 'write_to' => list<string>|null|false].
+     * Null = leave the service's copy alone.
      */
     public function describe(Model $m): ?array;
 

@@ -232,10 +232,10 @@ class CalendarServiceClient implements CalendarClient
         ]);
     }
 
-    public function updateDetails(string $bookingId, ?string $title = null, ?string $description = null, ?string $location = null): Booking
+    public function updateDetails(string $bookingId, ?string $title = null, ?string $description = null, ?string $location = null, ?string $zone = null): Booking
     {
         return Booking::fromArray($this->send('PATCH', 'api/v1/bookings/'.rawurlencode($bookingId), array_filter(
-            ['title' => $title, 'description' => $description, 'location' => $location], fn ($v) => $v !== null
+            ['title' => $title, 'description' => $description, 'location' => $location, 'zone' => $zone], fn ($v) => $v !== null
         )));
     }
 

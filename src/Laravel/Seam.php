@@ -175,13 +175,14 @@ class Seam
      *
      * @param list<string>|null|false $writeTo false = leave who receives it unchanged
      */
-    public function describe(string $bookingId, ?string $title, ?string $description, ?string $location, array|null|false $writeTo = false): Booking
+    public function describe(string $bookingId, ?string $title, ?string $description, ?string $location, array|null|false $writeTo = false, ?string $zone = null): Booking
     {
         $booking = $this->call(fn () => $this->client()->updateDetails(
             $bookingId,
             $title === null ? null : mb_substr($title, 0, 200),
             $description,
             $location === null ? null : (mb_substr($location, 0, 500) ?: null),
+            $zone !== null && $zone !== '' ? $zone : null,
         ));
         if ($writeTo === false) {
             return $booking;
