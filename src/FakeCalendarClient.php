@@ -474,6 +474,9 @@ class FakeCalendarClient implements CalendarClient
             'hold_expires_at' => $this->iso($this->now()->modify('+'.(int) ($details['ttl'] ?? 900).' seconds')),
             'hosts' => isset($details['host']) && in_array($details['host'], $slot->hostIds, true) ? [$details['host']] : array_slice($slot->hostIds, 0, 1),
             'participants' => $details['participants'] ?? [], 'idempotency_key' => $idempotencyKey, 'open_proposal' => null,
+            // As the service: a hold keeps its text and the zone it was booked in.
+            'title' => $details['title'] ?? null, 'description' => $details['description'] ?? null,
+            'location' => $details['location'] ?? null, 'zone' => $details['zone'] ?? null,
         ];
 
         return Booking::fromArray($this->bookings[$id]);
@@ -1028,6 +1031,7 @@ class FakeCalendarClient implements CalendarClient
             'participants' => $this->withParticipantIds($details['participants'] ?? []),
             'product_ref' => $details['product_ref'] ?? null, 'title' => $details['title'] ?? null,
             'description' => $details['description'] ?? null, 'location' => $details['location'] ?? null,
+            'zone' => $details['zone'] ?? null,
             'idempotency_key' => $idempotencyKey, 'hold_expires_at' => null, 'open_proposal' => null,
         ]);
     }
