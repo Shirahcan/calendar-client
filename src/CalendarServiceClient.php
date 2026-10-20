@@ -317,7 +317,8 @@ class CalendarServiceClient implements CalendarClient
     {
         return Booking::fromArray($this->send('POST', 'api/v1/bookings/'.rawurlencode($bookingId).'/participants', array_filter([
             'auth_id' => $who['auth_id'] ?? null, 'email' => $who['email'] ?? null, 'name' => $who['name'] ?? null,
-            'zone' => $who['zone'] ?? null, 'role' => $role, 'actor' => $actor,
+            'zone' => $who['zone'] ?? null, 'phone' => $who['phone'] ?? null, 'organization' => $who['organization'] ?? null,
+            'role' => $role, 'actor' => $actor,
         ], fn ($v) => $v !== null)));
     }
 
@@ -329,7 +330,7 @@ class CalendarServiceClient implements CalendarClient
     public function updateParticipant(string $bookingId, int $participantId, array $fields, ?string $actor = null): Booking
     {
         return Booking::fromArray($this->send('PATCH', 'api/v1/bookings/'.rawurlencode($bookingId).'/participants/'.$participantId,
-            array_intersect_key($fields, array_flip(['name', 'zone'])) + array_filter(['actor' => $actor])));
+            array_intersect_key($fields, array_flip(['name', 'zone', 'phone', 'organization'])) + array_filter(['actor' => $actor])));
     }
 
     public function notes(string $bookingId, ?string $viewerAuthId = null): array

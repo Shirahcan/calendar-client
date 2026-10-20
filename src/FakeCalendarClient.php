@@ -789,7 +789,8 @@ class FakeCalendarClient implements CalendarClient
             }
         }
         $b['participants'] = [...$participants, ['id' => $this->participantId(), 'auth_id' => $who['auth_id'] ?? null, 'email' => $who['email'] ?? null,
-            'name' => $who['name'] ?? null, 'zone' => $who['zone'] ?? null, 'role' => $role, 'attendance' => null, 'response' => null]];
+            'name' => $who['name'] ?? null, 'phone' => $who['phone'] ?? null, 'organization' => $who['organization'] ?? null,
+            'zone' => $who['zone'] ?? null, 'role' => $role, 'attendance' => null, 'response' => null]];
 
         return $this->save($b);
     }
@@ -821,7 +822,7 @@ class FakeCalendarClient implements CalendarClient
         $participants = array_values((array) ($b['participants'] ?? []));
         foreach ($participants as $i => $p) {
             if (($p['id'] ?? null) === $participantId) {
-                $participants[$i] = array_merge($p, array_intersect_key($fields, array_flip(['name', 'zone'])));
+                $participants[$i] = array_merge($p, array_intersect_key($fields, array_flip(['name', 'zone', 'phone', 'organization'])));
                 $b['participants'] = $participants;
 
                 return $this->save($b);

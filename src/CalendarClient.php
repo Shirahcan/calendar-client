@@ -221,7 +221,7 @@ interface CalendarClient
     /**
      * Invite somebody to a live booking beside its booker (idempotent on auth_id, else email).
      *
-     * @param array{auth_id?: ?string, email?: ?string, name?: ?string, zone?: ?string} $who
+     * @param array{auth_id?: ?string, email?: ?string, name?: ?string, zone?: ?string, phone?: ?string, organization?: ?string} $who
      * @param 'attendee'|'guest' $role
      */
     public function addParticipant(string $bookingId, array $who, string $role = 'attendee', ?string $actor = null): Booking;
@@ -235,6 +235,7 @@ interface CalendarClient
      *
      * @param array{name?: ?string, zone?: ?string} $fields
      */
+    /** `$fields`: name, zone, phone, organization (never who they ARE: auth id, email, role). */
     public function updateParticipant(string $bookingId, int $participantId, array $fields, ?string $actor = null): Booking;
 
     /*

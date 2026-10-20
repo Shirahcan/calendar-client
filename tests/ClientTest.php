@@ -817,4 +817,16 @@ class ClientTest extends TestCase
         $this->assertSame(['2026-10-12T13:00:00Z', '2026-10-13T13:00:00Z'], [$history[1]['old_start_utc'], $history[1]['new_start_utc']]);
         $this->assertSame(['app:user:2', 'no longer needed'], [$history[2]['actor'], $history[2]['reason']]);
     }
+    public function test_a_guest_keeps_a_phone_and_an_organization(): void
+    {
+        $this->client($this->json(200, ['success' => true, 'data' => $this->bookingData()]))
+            ->addParticipant('b-1', ['email' => 'amara@x.test', 'phone' => '+1 403 555 0101', 'organization' => 'Northgate'], 'guest');
+        $body = json_decode((string) $this->history[0]['request']->getBody(), true);
+        $this->assertSame(['+1 403 555 0101', 'Northgate'], [$body['phone'], $body['organization']]);
+
+        $fake = (new \Shirahcan\CalendarClient\FakeCalendarClient())->travelTo(new DateTimeImmutable('2026-10-05T08:00:00Z'));
+        $b = $fake->createMeeting(['auth-1'], new DateTimeImmutable('2026-10-12T13:00:00Z'), new DateTimeImmutable('2026-10-12T14:00:00Z'), 'k-2');
+        $p = $fake->addParticipant($b->id, ['email' => 'amara@x.test', 'phone' => '+1', 'organization' => 'Northgate'], 'guest')->participants[0];
+        $this->assertSame('Northgate', $fake->updateParticipant($b->id, $p['id'], ['phone' => '+2'])->participants[0]['organization']);
+    }
 }
