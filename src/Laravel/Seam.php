@@ -35,6 +35,9 @@ class Seam
     public const UNAVAILABLE = 'Scheduling is briefly unavailable. Please try again in a moment.';
     public const FAILED = 'Scheduling could not complete that request. Please try again.';
 
+    /** A time a wait (the policy's `wait_after`) still closes for this booker: an expected answer. */
+    public const NOT_OPEN_YET = 'That time is not open for booking yet. Please pick one of the times shown.';
+
     protected function client(): CalendarClient
     {
         return app(CalendarClient::class);
@@ -89,9 +92,10 @@ class Seam
     /** A move made by the product or a host: their free time is enough (`$hostOverride`). */
     /** `by`: a booker is held to the policy's reschedule notice (refused with its sentence). */
     /** `reason`: the mover's words, kept on the booking's history ("Rescheduled ... Reason: ..."). */
-    public function reschedule(string $bookingId, DateTimeInterface $start, DateTimeInterface $end, bool $hostOverride = true, ?string $actor = null, ?string $by = null, ?string $reason = null): Booking
+    /** `since`: events that may still close the new time for a booker (CalendarClient::slotsOpening). */
+    public function reschedule(string $bookingId, DateTimeInterface $start, DateTimeInterface $end, bool $hostOverride = true, ?string $actor = null, ?string $by = null, ?string $reason = null, ?array $since = null): Booking
     {
-        return $this->call(fn () => $this->client()->reschedule($bookingId, $start, $actor, $reason, $end, $hostOverride, $by));
+        return $this->call(fn () => $this->client()->reschedule($bookingId, $start, $actor, $reason, $end, $hostOverride, $by, $since));
     }
 
     public function approve(string $bookingId, ?string $actor = null): Booking
@@ -254,12 +258,15 @@ class Seam
         $message = match (true) {
             $e instanceof SlotUnavailable => self::TAKEN,
             $e instanceof HoldExpired => self::HOLD_EXPIRED,
+            $e instanceof CalendarRequestRejected && $e->errorCode === 'not_open_yet' => self::NOT_OPEN_YET,
             $e instanceof CalendarServiceUnavailable => self::UNAVAILABLE,
             $e instanceof CalendarRequestRejected => $e->getMessage(),
             default => self::FAILED,
         };
 
-        if (! $e instanceof SlotUnavailable && ! $e instanceof HoldExpired) {
+        $expected = $e instanceof SlotUnavailable || $e instanceof HoldExpired
+            || ($e instanceof CalendarRequestRejected && $e->errorCode === 'not_open_yet');
+        if (! $expected) {
             report($e);
         }
 

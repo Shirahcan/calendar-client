@@ -414,21 +414,82 @@ class FakeCalendarClient implements CalendarClient
         return $out;
     }
 
-    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null): array
+    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null): array
     {
         $this->log(__FUNCTION__, func_get_args());
+
+        return $this->slotsWithin($bookingTypeRef, $from, $to, $durationMinutes, $since)['slots'];
+    }
+
+    public function slotsOpening(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+
+        return $this->slotsWithin($bookingTypeRef, $from, $to, $durationMinutes, $since);
+    }
+
+    /** @return array{slots: list<Slot>, opens_at: ?DateTimeImmutable} */
+    private function slotsWithin(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes, ?array $since): array
+    {
+        // A wait the policy's `wait_after` puts after a reported event: nothing before it is offered.
+        $floor = $this->waitFloor($since);
+        $opensAt = $floor !== null && $floor > $this->now()->getTimestamp() ? $floor : null;
 
         // The fake does not compute: seed slots of each length with withSlots(); a chosen length
         // returns only the seeded slots of that length. A closed link offers nothing, as the service.
         if ($this->linkClosed($bookingTypeRef) !== null) {
-            return [];
+            return ['slots' => [], 'opens_at' => null];
         }
 
-        return array_values(array_filter(
-            $this->slots[$bookingTypeRef] ?? [],
-            fn (Slot $s) => $s->start >= $from && $s->start < $to && ! $this->taken($s->start->getTimestamp())
-                && ($durationMinutes === null || $s->end->getTimestamp() - $s->start->getTimestamp() === $durationMinutes * 60)
-        ));
+        return [
+            'slots' => array_values(array_filter(
+                $this->slots[$bookingTypeRef] ?? [],
+                fn (Slot $s) => $s->start >= $from && $s->start < $to && ! $this->taken($s->start->getTimestamp())
+                    && ($opensAt === null || $s->start->getTimestamp() >= $opensAt)
+                    && ($durationMinutes === null || $s->end->getTimestamp() - $s->start->getTimestamp() === $durationMinutes * 60)
+            )),
+            'opens_at' => $opensAt === null ? null : (new DateTimeImmutable('@'.$opensAt)),
+        ];
+    }
+
+    /**
+     * The first instant booking opens after the reported events, as the service reads the policy's
+     * `wait_after`; null when nothing waits. A malformed `since` is refused as the service does.
+     */
+    private function waitFloor(?array $since): ?int
+    {
+        $since = CalendarServiceClient::since($since);
+        if ($since === null) {
+            return null;
+        }
+        $waits = (array) (($this->schedulingPolicy ?? [])['wait_after'] ?? []);
+        $floor = null;
+        foreach ($since as $event => $at) {
+            if (! preg_match('/^[a-z][a-z0-9_]{0,39}$/', $event)) {
+                throw new CalendarRequestRejected("since: [{$event}] is not an event name (lowercase letters, digits and _).", 'invalid_request', 422);
+            }
+            try {
+                $ts = (new DateTimeImmutable($at))->getTimestamp();
+            } catch (\Throwable) {
+                throw new CalendarRequestRejected("since.{$event} must be an ISO 8601 instant.", 'invalid_request', 422);
+            }
+            $minutes = (int) ($waits[$event] ?? 0);
+            if ($minutes > 0) {
+                $floor = max($floor ?? 0, $ts + $minutes * 60);
+            }
+        }
+
+        return $floor;
+    }
+
+    /** Refuses a start the policy's wait still closes, with the service's sentence. */
+    private function assertOpen(DateTimeInterface $start, ?array $since): void
+    {
+        $floor = $this->waitFloor($since);
+        if ($floor !== null && $start->getTimestamp() < $floor) {
+            throw new CalendarRequestRejected('That time is not open for booking yet. Times open from '
+                .(new DateTimeImmutable('@'.$floor))->format('Y-m-d\TH:i:sP').'.', 'not_open_yet', 409);
+        }
     }
 
     public function previewSlots(array $spec, array $rules, DateTimeInterface $from, DateTimeInterface $to, ?string $hostAuthId = null): array
@@ -447,6 +508,8 @@ class FakeCalendarClient implements CalendarClient
                 return Booking::fromArray($b);
             }
         }
+
+        $this->assertOpen($start, $details['since'] ?? null);
 
         $closed = $this->linkClosed($bookingTypeRef);
         if ($closed !== null) {
@@ -530,9 +593,10 @@ class FakeCalendarClient implements CalendarClient
         return $was === Booking::PENDING ? $this->save(['decided_at' => $this->iso($this->now()), 'decided_actor' => $actor, 'decision_reason' => $reason] + $booking->raw) : $booking;
     }
 
-    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false, ?string $by = null): Booking
+    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false, ?string $by = null, ?array $since = null): Booking
     {
         $this->log(__FUNCTION__, func_get_args());
+        $this->assertOpen($start, $since);
         $b = $this->find($bookingId);
         if (! in_array($b['state'], [Booking::CONFIRMED, Booking::PENDING], true)) {
             throw new CalendarRequestRejected("A booking that is {$b['state']} cannot be moved.", 'invalid_state', 409);
@@ -984,9 +1048,10 @@ class FakeCalendarClient implements CalendarClient
         return array_map(fn ($p) => ['id' => $p['id'] ?? $this->participantId(), 'attendance' => $p['attendance'] ?? null] + (array) $p, array_values($participants));
     }
 
-    public function rebook(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $by = null, ?DateTimeInterface $end = null, ?string $productRef = null): Booking
+    public function rebook(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $by = null, ?DateTimeInterface $end = null, ?string $productRef = null, ?array $since = null): Booking
     {
         $this->log(__FUNCTION__, func_get_args());
+        $this->assertOpen($start, $since);
         $old = $this->find($bookingId);
         if (isset($old['rebooked_to'], $this->bookings[$old['rebooked_to']]) && $this->bookings[$old['rebooked_to']]['state'] !== Booking::CANCELLED) {
             return Booking::fromArray($this->bookings[$old['rebooked_to']]);
@@ -1417,6 +1482,7 @@ class FakeCalendarClient implements CalendarClient
         'observe_holidays_by_default' => true,
         'cancel_notice_minutes' => 1440,
         'reschedule_notice_minutes' => 1440,
+        'wait_after' => [],
         'call_tools_offered' => ['zoom', 'google_meet'],
         'calendar_providers_offered' => ['google', 'microsoft'],
         'backup_call_tool' => null,

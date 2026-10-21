@@ -109,14 +109,27 @@ interface CalendarClient
      *
      * @return list<Slot>
      */
-    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null): array;
+    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null): array;
+
+    /**
+     * slots(), with the first instant booking opens when a wait closes the start of the range.
+     *
+     * `$since`: events the product reports for the person booking, name => when it happened
+     * (`['case_accepted' => $at]`). The policy's `wait_after` says how long each closes booking
+     * for; an event it does not name closes nothing. Pass the same `since` to hold() (details),
+     * and to reschedule() / rebook() when the booker moves, or it is refused (not_open_yet).
+     *
+     * @param  array<string, DateTimeInterface|string|null>|null  $since
+     * @return array{slots: list<Slot>, opens_at: ?\DateTimeImmutable}
+     */
+    public function slotsOpening(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null): array;
 
     /** An inline spec: computed, never stored, never bookable. @return list<Slot> */
     public function previewSlots(array $spec, array $rules, DateTimeInterface $from, DateTimeInterface $to, ?string $hostAuthId = null): array;
 
     // Booking lifecycle
 
-    /** @param array $details product_ref, host (preferred, round-robin), title, description, location, participants[], ttl, actor */
+    /** @param array $details product_ref, host (preferred, round-robin), title, description, location, participants[], ttl, actor, since (see slotsOpening) */
     public function hold(string $bookingTypeRef, DateTimeInterface $start, string $idempotencyKey, array $details = []): Booking;
 
     public function extendHold(string $bookingId, int $seconds): Booking;
@@ -135,7 +148,7 @@ interface CalendarClient
      * @param string|null $by who moves it: a booker is held to the policy's reschedule notice
      *                        (refused as notice_window); host, product and system are not
      */
-    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false, ?string $by = null): Booking;
+    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false, ?string $by = null, ?array $since = null): Booking;
 
     /**
      * Book a call that did not happen (outcome no_show, host_no_show, nobody_came, unrecorded or
@@ -146,7 +159,7 @@ interface CalendarClient
      *
      * @param string|null $by who rebooks: the booker, a host, an admin (recorded on the old one)
      */
-    public function rebook(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $by = null, ?DateTimeInterface $end = null, ?string $productRef = null): Booking;
+    public function rebook(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $by = null, ?DateTimeInterface $end = null, ?string $productRef = null, ?array $since = null): Booking;
 
     /**
      * The product's text for the host's calendar copy; a confirmed booking's copy is rewritten.

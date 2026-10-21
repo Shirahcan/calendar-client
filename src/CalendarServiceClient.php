@@ -166,13 +166,40 @@ class CalendarServiceClient implements CalendarClient
         return $out;
     }
 
-    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null): array
+    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null): array
+    {
+        return $this->slotsOpening($bookingTypeRef, $from, $to, $durationMinutes, $since)['slots'];
+    }
+
+    public function slotsOpening(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null): array
     {
         $data = $this->send('GET', 'api/v1/booking-types/'.rawurlencode($bookingTypeRef).'/slots', array_filter([
             'from' => $from->format(DATE_ATOM), 'to' => $to->format(DATE_ATOM), 'duration' => $durationMinutes,
+            'since' => self::since($since),
         ], fn ($v) => $v !== null));
 
-        return array_map(fn (array $s) => Slot::fromArray($s), (array) ($data['slots'] ?? []));
+        return [
+            'slots' => array_map(fn (array $s) => Slot::fromArray($s), (array) ($data['slots'] ?? [])),
+            'opens_at' => isset($data['opens_at']) ? new \DateTimeImmutable((string) $data['opens_at']) : null,
+        ];
+    }
+
+    /**
+     * Events as the service reads them: name => ISO 8601 instant. Null (send nothing) when none.
+     *
+     * @param  array<string, DateTimeInterface|string|null>|null  $since
+     * @return array<string, string>|null
+     */
+    public static function since(?array $since): ?array
+    {
+        $out = [];
+        foreach ($since ?? [] as $event => $at) {
+            if ($at !== null && $at !== '') {
+                $out[(string) $event] = $at instanceof DateTimeInterface ? $at->format(DATE_ATOM) : (string) $at;
+            }
+        }
+
+        return $out === [] ? null : $out;
     }
 
     public function previewSlots(array $spec, array $rules, DateTimeInterface $from, DateTimeInterface $to, ?string $hostAuthId = null): array
@@ -186,6 +213,12 @@ class CalendarServiceClient implements CalendarClient
 
     public function hold(string $bookingTypeRef, DateTimeInterface $start, string $idempotencyKey, array $details = []): Booking
     {
+        // `since`: events that may close the time for this booker (see slotsOpening).
+        $details['since'] = self::since($details['since'] ?? null);
+        if ($details['since'] === null) {
+            unset($details['since']);
+        }
+
         return Booking::fromArray($this->send('POST', 'api/v1/bookings', [
             'booking_type' => $bookingTypeRef, 'start' => $start->format(DATE_ATOM), 'idempotency_key' => $idempotencyKey,
         ] + $details));
@@ -216,19 +249,20 @@ class CalendarServiceClient implements CalendarClient
         return $this->bookingAction($bookingId, 'decline', ['actor' => $actor, 'reason' => $reason]);
     }
 
-    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false, ?string $by = null): Booking
+    public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false, ?string $by = null, ?array $since = null): Booking
     {
         return $this->bookingAction($bookingId, 'reschedule', [
             'start' => $start->format(DATE_ATOM), 'end' => $end?->format(DATE_ATOM),
             'host_override' => $hostOverride ?: null, 'actor' => $actor, 'reason' => $reason, 'by' => $by,
+            'since' => self::since($since),
         ]);
     }
 
-    public function rebook(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $by = null, ?DateTimeInterface $end = null, ?string $productRef = null): Booking
+    public function rebook(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $by = null, ?DateTimeInterface $end = null, ?string $productRef = null, ?array $since = null): Booking
     {
         return $this->bookingAction($bookingId, 'rebook', [
             'start' => $start->format(DATE_ATOM), 'end' => $end?->format(DATE_ATOM),
-            'actor' => $actor, 'by' => $by, 'product_ref' => $productRef,
+            'actor' => $actor, 'by' => $by, 'product_ref' => $productRef, 'since' => self::since($since),
         ]);
     }
 

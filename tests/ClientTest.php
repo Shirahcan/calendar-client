@@ -562,6 +562,63 @@ class ClientTest extends TestCase
         $this->assertArrayNotHasKey('duration', $q1);
     }
 
+    public function test_since_travels_on_slots_hold_and_moves_and_opens_at_comes_back(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['success' => true, 'data' => ['slots' => [], 'opens_at' => '2026-10-12T14:30:00+00:00']]),
+            $this->json(201, ['data' => $this->bookingData()]),
+            $this->json(200, ['data' => $this->bookingData(['state' => 'confirmed'])]),
+            $this->json(201, ['data' => $this->bookingData()]),
+            $this->json(201, ['data' => $this->bookingData()]),
+        );
+        $since = ['case_accepted' => new DateTimeImmutable('2026-10-11T14:30:00Z'), 'unknown_yet' => null];
+
+        $out = $client->slotsOpening('call-1', new DateTimeImmutable('2026-10-12T00:00:00Z'), new DateTimeImmutable('2026-10-13T00:00:00Z'), null, $since);
+        $this->assertSame('2026-10-12T14:30:00+00:00', $out['opens_at']->format(DATE_ATOM));
+        parse_str($this->history[0]['request']->getUri()->getQuery(), $q);
+        $this->assertSame(['case_accepted' => '2026-10-11T14:30:00+00:00'], $q['since'], 'a null event is not sent');
+
+        $client->hold('call-1', new DateTimeImmutable('2026-10-12T15:00:00Z'), 'k-1', ['since' => $since]);
+        $this->assertSame(['case_accepted' => '2026-10-11T14:30:00+00:00'], json_decode((string) $this->history[1]['request']->getBody(), true)['since']);
+
+        $client->reschedule('b-1', new DateTimeImmutable('2026-10-12T16:00:00Z'), null, null, null, false, 'booker', $since);
+        $this->assertSame('2026-10-11T14:30:00+00:00', json_decode((string) $this->history[2]['request']->getBody(), true)['since']['case_accepted']);
+
+        $client->rebook('b-1', new DateTimeImmutable('2026-10-12T16:00:00Z'), null, 'booker', null, null, $since);
+        $this->assertSame('2026-10-11T14:30:00+00:00', json_decode((string) $this->history[3]['request']->getBody(), true)['since']['case_accepted']);
+
+        // Nothing reported: no `since` at all.
+        $client->hold('call-1', new DateTimeImmutable('2026-10-12T15:00:00Z'), 'k-2', ['since' => ['case_accepted' => null]]);
+        $this->assertArrayNotHasKey('since', json_decode((string) $this->history[4]['request']->getBody(), true));
+    }
+
+    public function test_the_fake_keeps_the_policys_wait_after_a_reported_event(): void
+    {
+        $fake = (new FakeCalendarClient())->withSlots('call-1', [
+            new Slot(new DateTimeImmutable('2026-10-12T14:00:00Z'), new DateTimeImmutable('2026-10-12T15:00:00Z'), ['auth-1']),
+            new Slot(new DateTimeImmutable('2026-10-12T15:00:00Z'), new DateTimeImmutable('2026-10-12T16:00:00Z'), ['auth-1']),
+        ]);
+        $fake->travelTo(new DateTimeImmutable("2026-10-01T12:00:00Z"));
+        $since = ['case_accepted' => '2026-10-11T14:30:00Z'];
+        [$from, $to] = [new DateTimeImmutable('2026-10-12T00:00:00Z'), new DateTimeImmutable('2026-10-13T00:00:00Z')];
+
+        // No wait in the policy: the event closes nothing.
+        $this->assertCount(2, $fake->slots('call-1', $from, $to, null, $since));
+
+        $fake->setSchedulingPolicy(['wait_after' => ['case_accepted' => 1440]]);
+        $out = $fake->slotsOpening('call-1', $from, $to, null, $since);
+        $this->assertSame(['2026-10-12T15:00:00+00:00'], array_map(fn (Slot $s) => $s->start->format(DATE_ATOM), $out['slots']));
+        $this->assertSame('2026-10-12T14:30:00+00:00', $out['opens_at']->format(DATE_ATOM));
+
+        try {
+            $fake->hold('call-1', new DateTimeImmutable('2026-10-12T14:00:00Z'), 'k-1', ['since' => $since]);
+            $this->fail('a hold inside the wait is refused');
+        } catch (CalendarRequestRejected $e) {
+            $this->assertSame('not_open_yet', $e->errorCode);
+        }
+        $this->assertSame('held', $fake->hold('call-1', new DateTimeImmutable('2026-10-12T15:00:00Z'), 'k-2', ['since' => $since])->state);
+    }
+
     public function test_the_fake_promotes_a_mirror_into_a_booking(): void
     {
         $fake = new FakeCalendarClient();
