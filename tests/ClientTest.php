@@ -619,6 +619,15 @@ class ClientTest extends TestCase
         $this->assertSame('held', $fake->hold('call-1', new DateTimeImmutable('2026-10-12T15:00:00Z'), 'k-2', ['since' => $since])->state);
     }
 
+    public function test_a_hosts_own_wait_and_its_limit_are_sent(): void
+    {
+        $this->client($this->json(200, ['data' => ['call_tool' => null, 'requires_approval' => false, 'booking_mode' => 'native', 'wait_after' => ['case_accepted' => 2880]]]))
+            ->setHostPreferences('auth-1', ['wait_after' => ['case_accepted' => 2880], 'wait_limit' => 'marketplace', 'stray' => 1]);
+
+        $body = json_decode((string) $this->history[0]['request']->getBody(), true);
+        $this->assertSame(['wait_after' => ['case_accepted' => 2880], 'wait_limit' => 'marketplace'], $body);
+    }
+
     public function test_the_fake_keeps_a_hosts_own_wait_and_its_limit(): void
     {
         $fake = (new FakeCalendarClient())->withSlots('call-1', [
