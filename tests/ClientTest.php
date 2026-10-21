@@ -619,6 +619,26 @@ class ClientTest extends TestCase
         $this->assertSame('held', $fake->hold('call-1', new DateTimeImmutable('2026-10-12T15:00:00Z'), 'k-2', ['since' => $since])->state);
     }
 
+    public function test_the_fake_keeps_a_hosts_own_wait_and_its_limit(): void
+    {
+        $fake = (new FakeCalendarClient())->withSlots('call-1', [
+            new Slot(new DateTimeImmutable('2026-10-12T14:00:00Z'), new DateTimeImmutable('2026-10-12T15:00:00Z'), ['auth-1']),
+            new Slot(new DateTimeImmutable('2026-10-12T15:00:00Z'), new DateTimeImmutable('2026-10-12T16:00:00Z'), ['auth-1']),
+        ]);
+        $fake->travelTo(new DateTimeImmutable('2026-10-01T12:00:00Z'));
+        $fake->setSchedulingPolicy(['wait_after' => ['case_accepted' => 1440], 'wait_after_limits' => ['marketplace' => 4320]]);
+        $since = ['case_accepted' => '2026-10-11T14:30:00Z'];
+        [$from, $to] = [new DateTimeImmutable('2026-10-12T00:00:00Z'), new DateTimeImmutable('2026-10-13T00:00:00Z')];
+
+        $this->assertCount(1, $fake->slots('call-1', $from, $to, null, $since));
+        $prefs = $fake->setHostPreferences('auth-1', ['wait_after' => ['case_accepted' => 0], 'wait_limit' => 'marketplace']);
+        $this->assertSame(['case_accepted' => 0], $prefs['wait_after']);
+        $this->assertCount(2, $fake->slots('call-1', $from, $to, null, $since));
+
+        $this->expectException(CalendarRequestRejected::class);
+        $fake->setHostPreferences('auth-1', ['wait_after' => ['case_accepted' => 4380], 'wait_limit' => 'marketplace']);
+    }
+
     public function test_the_fake_promotes_a_mirror_into_a_booking(): void
     {
         $fake = new FakeCalendarClient();

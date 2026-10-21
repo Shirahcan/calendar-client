@@ -423,12 +423,20 @@ interface CalendarClient
 
     // The person's own preferences (one place for every product)
 
-    /** @return array{call_tool: ?string, requires_approval: bool, booking_mode: 'native'|'external'} */
+    /**
+     * `wait_after`: the person's own waits after reported events for this product ({} = the standard
+     * ones apply); `wait_after_default`: the policy's; `wait_after_limits`: the policy's named limits.
+     *
+     * @return array{call_tool: ?string, requires_approval: bool, booking_mode: 'native'|'external', wait_after: array<string, int>, wait_after_default: array<string, int>, wait_after_limits: array<string, int>, wait_after_max_minutes: int}
+     */
     public function hostPreferences(string $hostAuthId): array;
 
     /**
-     * @param array{call_tool?: ?string, requires_approval?: bool, booking_mode?: 'native'|'external'} $preferences only the keys given change
-     * @return array{call_tool: ?string, requires_approval: bool, booking_mode: 'native'|'external'}
+     * `wait_after` ({event: minutes|null}, null = the standard wait again) with `wait_limit`, the
+     * policy's named limit that binds this person (none: up to the service's 90 days).
+     *
+     * @param array{call_tool?: ?string, requires_approval?: bool, booking_mode?: 'native'|'external', wait_after?: array<string, ?int>, wait_limit?: ?string} $preferences only the keys given change
+     * @return array{call_tool: ?string, requires_approval: bool, booking_mode: 'native'|'external', wait_after: array<string, int>, wait_after_default: array<string, int>, wait_after_limits: array<string, int>, wait_after_max_minutes: int}
      */
     public function setHostPreferences(string $hostAuthId, array $preferences): array;
 

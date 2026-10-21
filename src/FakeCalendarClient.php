@@ -431,38 +431,53 @@ class FakeCalendarClient implements CalendarClient
     /** @return array{slots: list<Slot>, opens_at: ?DateTimeImmutable} */
     private function slotsWithin(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes, ?array $since): array
     {
-        // A wait the policy's `wait_after` puts after a reported event: nothing before it is offered.
-        $floor = $this->waitFloor($since);
-        $opensAt = $floor !== null && $floor > $this->now()->getTimestamp() ? $floor : null;
-
         // The fake does not compute: seed slots of each length with withSlots(); a chosen length
         // returns only the seeded slots of that length. A closed link offers nothing, as the service.
         if ($this->linkClosed($bookingTypeRef) !== null) {
             return ['slots' => [], 'opens_at' => null];
         }
 
-        return [
-            'slots' => array_values(array_filter(
-                $this->slots[$bookingTypeRef] ?? [],
-                fn (Slot $s) => $s->start >= $from && $s->start < $to && ! $this->taken($s->start->getTimestamp())
-                    && ($opensAt === null || $s->start->getTimestamp() >= $opensAt)
-                    && ($durationMinutes === null || $s->end->getTimestamp() - $s->start->getTimestamp() === $durationMinutes * 60)
-            )),
-            'opens_at' => $opensAt === null ? null : (new DateTimeImmutable('@'.$opensAt)),
-        ];
+        // A wait after a reported event (each host's own, else the policy's): nothing before it is offered.
+        $now = $this->now()->getTimestamp();
+        $opensAt = null;
+        $slots = array_values(array_filter(
+            $this->slots[$bookingTypeRef] ?? [],
+            function (Slot $s) use ($from, $to, $durationMinutes, $since, $now, &$opensAt) {
+                if (! ($s->start >= $from && $s->start < $to && ! $this->taken($s->start->getTimestamp())
+                    && ($durationMinutes === null || $s->end->getTimestamp() - $s->start->getTimestamp() === $durationMinutes * 60))) {
+                    return false;
+                }
+                $floor = $this->waitFloor($since, $s->hostIds);
+                if ($floor !== null && $floor > $now && $floor > $from->getTimestamp()) {
+                    $opensAt = max($opensAt ?? $floor, $floor);
+                }
+
+                return $floor === null || $s->start->getTimestamp() >= $floor;
+            }
+        ));
+
+        return ['slots' => $slots, 'opens_at' => $opensAt === null ? null : (new DateTimeImmutable('@'.$opensAt))];
     }
 
     /**
      * The first instant booking opens after the reported events, as the service reads the policy's
      * `wait_after`; null when nothing waits. A malformed `since` is refused as the service does.
      */
-    private function waitFloor(?array $since): ?int
+    private function waitFloor(?array $since, array $hostIds = []): ?int
     {
         $since = CalendarServiceClient::since($since);
         if ($since === null) {
             return null;
         }
-        $waits = (array) (($this->schedulingPolicy ?? [])['wait_after'] ?? []);
+        $policy = (array) (($this->schedulingPolicy ?? [])['wait_after'] ?? []);
+        // Each host's own wait, else the policy's; the longest among the hosts.
+        $waits = $policy;
+        foreach (array_keys($since) as $event) {
+            $each = array_map(fn (string $h) => array_key_exists($event, $this->hostWaits[$h] ?? []) ? (int) $this->hostWaits[$h][$event] : (int) ($policy[$event] ?? 0), $hostIds);
+            if ($each !== []) {
+                $waits[$event] = max($each);
+            }
+        }
         $floor = null;
         foreach ($since as $event => $at) {
             if (! preg_match('/^[a-z][a-z0-9_]{0,39}$/', $event)) {
@@ -483,9 +498,9 @@ class FakeCalendarClient implements CalendarClient
     }
 
     /** Refuses a start the policy's wait still closes, with the service's sentence. */
-    private function assertOpen(DateTimeInterface $start, ?array $since): void
+    private function assertOpen(DateTimeInterface $start, ?array $since, array $hostIds = []): void
     {
-        $floor = $this->waitFloor($since);
+        $floor = $this->waitFloor($since, $hostIds);
         if ($floor !== null && $start->getTimestamp() < $floor) {
             throw new CalendarRequestRejected('That time is not open for booking yet. Times open from '
                 .(new DateTimeImmutable('@'.$floor))->format('Y-m-d\TH:i:sP').'.', 'not_open_yet', 409);
@@ -509,8 +524,6 @@ class FakeCalendarClient implements CalendarClient
             }
         }
 
-        $this->assertOpen($start, $details['since'] ?? null);
-
         $closed = $this->linkClosed($bookingTypeRef);
         if ($closed !== null) {
             throw new CalendarRequestRejected(match ($closed) {
@@ -526,6 +539,7 @@ class FakeCalendarClient implements CalendarClient
                 $slot = $s;
             }
         }
+        $this->assertOpen($start, $details['since'] ?? null, $slot?->hostIds ?? []);
         if ($slot === null || $this->taken($start->getTimestamp())) {
             throw new SlotUnavailable('That time is no longer available. Please pick another.', 'slot_unavailable', 409);
         }
@@ -596,8 +610,8 @@ class FakeCalendarClient implements CalendarClient
     public function reschedule(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $reason = null, ?DateTimeInterface $end = null, bool $hostOverride = false, ?string $by = null, ?array $since = null): Booking
     {
         $this->log(__FUNCTION__, func_get_args());
-        $this->assertOpen($start, $since);
         $b = $this->find($bookingId);
+        $this->assertOpen($start, $since, (array) ($b['hosts'] ?? []));
         if (! in_array($b['state'], [Booking::CONFIRMED, Booking::PENDING], true)) {
             throw new CalendarRequestRejected("A booking that is {$b['state']} cannot be moved.", 'invalid_state', 409);
         }
@@ -1051,8 +1065,8 @@ class FakeCalendarClient implements CalendarClient
     public function rebook(string $bookingId, DateTimeInterface $start, ?string $actor = null, ?string $by = null, ?DateTimeInterface $end = null, ?string $productRef = null, ?array $since = null): Booking
     {
         $this->log(__FUNCTION__, func_get_args());
-        $this->assertOpen($start, $since);
         $old = $this->find($bookingId);
+        $this->assertOpen($start, $since, (array) ($old['hosts'] ?? []));
         if (isset($old['rebooked_to'], $this->bookings[$old['rebooked_to']]) && $this->bookings[$old['rebooked_to']]['state'] !== Booking::CANCELLED) {
             return Booking::fromArray($this->bookings[$old['rebooked_to']]);
         }
@@ -1361,12 +1375,32 @@ class FakeCalendarClient implements CalendarClient
     /** @var array<string, array{call_tool: ?string, requires_approval: bool}> host => preferences */
     public array $hostPreferences = [];
 
+    /** @var array<string, array<string, int>> host => their own waits (this product's) */
+    public array $hostWaits = [];
+
     public function hostPreferences(string $hostAuthId): array
     {
         $this->log(__FUNCTION__, func_get_args());
 
-        return $this->hostPreferences[$hostAuthId] ?? ['call_tool' => null, 'requires_approval' => false, 'booking_mode' => 'native'];
+        return ($this->hostPreferences[$hostAuthId] ?? ['call_tool' => null, 'requires_approval' => false, 'booking_mode' => 'native'])
+            + $this->waitPreferences($hostAuthId);
     }
+
+    /** The waits part of a host's preferences, as the service answers it. */
+    private function waitPreferences(string $hostAuthId): array
+    {
+        $policy = array_merge(self::SCHEDULING_DEFAULTS, $this->schedulingPolicy ?? []);
+
+        return [
+            'wait_after' => $this->hostWaits[$hostAuthId] ?? [],
+            'wait_after_default' => (array) $policy['wait_after'],
+            'wait_after_limits' => (array) $policy['wait_after_limits'],
+            'wait_after_max_minutes' => self::MAX_WAIT_MINUTES,
+        ];
+    }
+
+    /** The service's technical bound for any wait: 90 days. */
+    public const MAX_WAIT_MINUTES = 60 * 24 * 90;
 
     public function setHostPreferences(string $hostAuthId, array $preferences): array
     {
@@ -1380,12 +1414,44 @@ class FakeCalendarClient implements CalendarClient
         if ($tool === 'zoom' && array_filter($this->callTools[$hostAuthId] ?? [], fn ($t) => ($t['tool'] ?? null) === 'zoom' && ($t['status'] ?? 'active') === 'active') === []) {
             throw new CalendarRequestRejected('Connect your Zoom account first.', 'not_connected', 422);
         }
+        if (array_key_exists('wait_after', $preferences)) {
+            $this->setOwnWaits($hostAuthId, (array) $preferences['wait_after'], $preferences['wait_limit'] ?? null);
+        }
 
-        return $this->hostPreferences[$hostAuthId] = [
+        $this->hostPreferences[$hostAuthId] = [
             'call_tool' => $tool,
             'requires_approval' => (bool) ($preferences['requires_approval'] ?? $current['requires_approval']),
             'booking_mode' => $mode,
         ];
+
+        return $this->hostPreferences[$hostAuthId] + $this->waitPreferences($hostAuthId);
+    }
+
+    /** A host's own waits, bounded as the service bounds them (a named limit, else 90 days). */
+    private function setOwnWaits(string $hostAuthId, array $waits, ?string $limit): void
+    {
+        $max = self::MAX_WAIT_MINUTES;
+        if ($limit !== null) {
+            $limits = (array) array_merge(self::SCHEDULING_DEFAULTS, $this->schedulingPolicy ?? [])['wait_after_limits'];
+            if (! array_key_exists($limit, $limits)) {
+                throw new CalendarRequestRejected("There is no wait limit called [{$limit}].", 'invalid', 422);
+            }
+            $max = min($max, (int) $limits[$limit]);
+        }
+        $mine = $this->hostWaits[$hostAuthId] ?? [];
+        foreach ($waits as $event => $minutes) {
+            if ($minutes === null) {
+                unset($mine[$event]);
+
+                continue;
+            }
+            if (! is_int($minutes) || $minutes < 0 || $minutes > $max) {
+                $h = intdiv($max, 60);
+                throw new CalendarRequestRejected('A wait is whole minutes from 0 to '.$max.' ('.($h % 24 === 0 ? ($h / 24).' days' : $h.' hours').').', 'invalid', 422);
+            }
+            $mine[$event] = $minutes;
+        }
+        $this->hostWaits[$hostAuthId] = $mine;
     }
 
     public function callLink(string $bookingId, ?string $tool = null, ?string $hostAuthId = null): ?array
@@ -1483,6 +1549,7 @@ class FakeCalendarClient implements CalendarClient
         'cancel_notice_minutes' => 1440,
         'reschedule_notice_minutes' => 1440,
         'wait_after' => [],
+        'wait_after_limits' => [],
         'call_tools_offered' => ['zoom', 'google_meet'],
         'calendar_providers_offered' => ['google', 'microsoft'],
         'backup_call_tool' => null,
