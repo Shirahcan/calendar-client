@@ -648,6 +648,33 @@ class ClientTest extends TestCase
         $fake->setHostPreferences('auth-1', ['wait_after' => ['case_accepted' => 4380], 'wait_limit' => 'marketplace']);
     }
 
+    public function test_a_link_is_opened_by_its_public_token(): void
+    {
+        $client = $this->client($this->json(200, ['data' => ['ref' => 'link:1', 'public_token' => str_repeat('a', 64), 'closed_reason' => null]]));
+        $this->assertSame('link:1', $client->linkByToken(str_repeat('a', 64))['ref']);
+        $this->assertSame('/api/v1/links/by-token/'.str_repeat('a', 64), $this->history[0]['request']->getUri()->getPath());
+
+        $fake = new FakeCalendarClient();
+        $issued = $fake->createLink('auth-1', ['name' => 'Intro', 'duration' => 30, 'public_token' => true]);
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $issued['public_token']);
+        $this->assertSame($issued['ref'], $fake->linkByToken($issued['public_token'])['ref']);
+
+        $old = str_repeat('Ab3', 21).'x';
+        $ref = $fake->createLink('auth-1', ['name' => 'Second', 'duration' => 30])['ref'];
+        $this->assertSame($old, $fake->updateLink($ref, ['public_token' => $old])['public_token']);
+        $this->assertSame($old, $fake->updateLink($ref, ['name' => 'Renamed'])['public_token'], 'kept across edits');
+        $this->assertSame('p:user:1', $fake->updateLink($ref, ['created_by' => 'p:user:1'])['created_by']);
+        $this->assertSame('p:user:1', $fake->updateLink($ref, ['created_by' => 'p:user:2'])['created_by'], 'recorded once');
+        $fake->deleteLink($ref);
+        try {
+            $fake->linkByToken($old);
+            $this->fail('a deleted link is not found');
+        } catch (CalendarNotFound) {
+        }
+        $this->expectException(CalendarRequestRejected::class);
+        $fake->createLink('auth-1', ['name' => 'Third', 'duration' => 30, 'public_token' => $old]);
+    }
+
     public function test_the_fake_promotes_a_mirror_into_a_booking(): void
     {
         $fake = new FakeCalendarClient();

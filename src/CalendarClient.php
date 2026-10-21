@@ -91,6 +91,14 @@ interface CalendarClient
      */
     public function createLink(string $hostAuthId, array $fields): array;
 
+    /**
+     * The link a secret public token opens (`public_token`: `true` on createLink / updateLink issues
+     * one, a product's existing token is imported once). Its `closed_reason` says whether it takes
+     * bookings; the product decides what a stranger is told. Throws CalendarNotFound when none.
+     * `created_by` (createLink, or once on updateLink): who made the link, in the product's words.
+     */
+    public function linkByToken(string $token): array;
+
     /** Only the keys given change. */
     public function updateLink(string $ref, array $fields): array;
 

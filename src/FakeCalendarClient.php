@@ -182,6 +182,7 @@ class FakeCalendarClient implements CalendarClient
         $this->log(__FUNCTION__, func_get_args());
         $this->assertLinkFields($fields, true);
         $ref = (string) ($fields['ref'] ?? 'link:'.bin2hex(random_bytes(8)));
+        $fields['public_token'] = $this->linkToken($fields['public_token'] ?? null, null);
         $hasDefault = array_filter($this->links, fn ($l) => $l['host'] === $hostAuthId && $l['is_default']) !== [];
         $this->links[$ref] = $this->linkRow($ref, $hostAuthId, $fields + ['is_active' => true, 'is_default' => false]);
         $this->links[$ref]['is_default'] = false;
@@ -197,6 +198,13 @@ class FakeCalendarClient implements CalendarClient
         $this->log(__FUNCTION__, func_get_args());
         $current = $this->links[$ref] ?? throw new CalendarNotFound('Link not found.', null, 404);
         $this->assertLinkFields($fields, false);
+        if (array_key_exists('public_token', $fields)) {
+            $fields['public_token'] = $this->linkToken($fields['public_token'], $current['public_token'] ?? null);
+        }
+        // Who made it is recorded once, as the service does.
+        if (($current['created_by'] ?? null) !== null) {
+            unset($fields['created_by']);
+        }
         $default = $current['is_default'];
         $this->links[$ref] = $this->linkRow($ref, $current['host'], array_merge($current, $fields));
         $this->links[$ref]['is_default'] = $default;
@@ -205,6 +213,46 @@ class FakeCalendarClient implements CalendarClient
         }
 
         return $this->linkView($this->links[$ref]);
+    }
+
+    /** @var list<string> every public token ever given out (a deleted link's is never reused) */
+    private array $usedLinkTokens = [];
+
+    /** As the service: true issues 64 random characters, a string is imported once, never replaced. */
+    private function linkToken(mixed $asked, ?string $current): ?string
+    {
+        if ($current !== null) {
+            if (is_string($asked) && $asked !== $current) {
+                throw new CalendarRequestRejected('The link cannot be saved.', null, 422, ['This link already has a public token; it is never replaced.']);
+            }
+
+            return $current;
+        }
+        if ($asked === null || $asked === false) {
+            return null;
+        }
+        if ($asked !== true && (! is_string($asked) || ! preg_match('/^[A-Za-z0-9]{32,80}$/', $asked))) {
+            throw new CalendarRequestRejected('The link cannot be saved.', null, 422, ['A public token is 32 to 80 letters and digits (or true, for the service to issue one).']);
+        }
+        if (is_string($asked) && in_array($asked, $this->usedLinkTokens, true)) {
+            throw new CalendarRequestRejected('The link cannot be saved.', null, 422, ['That public token already belongs to another link.']);
+        }
+        $token = $asked === true ? bin2hex(random_bytes(32)) : $asked;
+        $this->usedLinkTokens[] = $token;
+
+        return $token;
+    }
+
+    public function linkByToken(string $token): array
+    {
+        $this->log(__FUNCTION__, func_get_args());
+        foreach ($this->links as $l) {
+            if (($l['public_token'] ?? null) === $token) {
+                return $this->linkView($l);
+            }
+        }
+
+        throw new CalendarNotFound('Link not found.', null, 404);
     }
 
     public function seedLinks(string $hostAuthId, ?string $scheduleRef = null): array
@@ -260,6 +308,8 @@ class FakeCalendarClient implements CalendarClient
             'expires_at' => ($f['expires_at'] ?? null) === null || $f['expires_at'] === ''
                 ? null : $this->iso(new DateTimeImmutable((string) $f['expires_at'])),
             'max_bookings' => ($f['max_bookings'] ?? null) === null || $f['max_bookings'] === '' ? null : (int) $f['max_bookings'],
+            'public_token' => is_string($f['public_token'] ?? null) ? $f['public_token'] : null,
+            'created_by' => isset($f['created_by']) ? (string) $f['created_by'] : null,
         ];
     }
 
@@ -267,7 +317,7 @@ class FakeCalendarClient implements CalendarClient
     private function linkView(array $l): array
     {
         // A row a test wrote straight into $links may predate the limits: absent = none.
-        $l += ['expires_at' => null, 'max_bookings' => null];
+        $l += ['expires_at' => null, 'max_bookings' => null, 'public_token' => null, 'created_by' => null];
 
         return $l + [
             'bookings_used' => $l['max_bookings'] === null ? null : $this->linkBookingsUsed($l['ref']),

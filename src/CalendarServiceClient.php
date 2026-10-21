@@ -111,6 +111,11 @@ class CalendarServiceClient implements CalendarClient
         return $this->send('PATCH', 'api/v1/links/'.rawurlencode($ref), $fields);
     }
 
+    public function linkByToken(string $token): array
+    {
+        return $this->send('GET', 'api/v1/links/by-token/'.rawurlencode($token));
+    }
+
     public function seedLinks(string $hostAuthId, ?string $scheduleRef = null): array
     {
         return array_values($this->send('POST', 'api/v1/hosts/'.rawurlencode($hostAuthId).'/links/seed', array_filter(['schedule' => $scheduleRef], fn ($v) => $v !== null)));
