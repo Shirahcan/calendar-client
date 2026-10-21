@@ -533,12 +533,21 @@ class FakeCalendarClient implements CalendarClient
             if (! preg_match('/^[a-z][a-z0-9_]{0,39}$/', $event)) {
                 throw new CalendarRequestRejected("since: [{$event}] is not an event name (lowercase letters, digits and _).", 'invalid_request', 422);
             }
+            // This booker's own wait for the event replaces the hosts' and the policy's.
+            $own = null;
+            if (is_array($at)) {
+                $own = $at['wait'] ?? null;
+                if (! is_int($own) || $own < 0 || $own > 60 * 24 * 90) {
+                    throw new CalendarRequestRejected("since.{$event} is an ISO 8601 instant, or {at, wait} with a wait in whole minutes from 0 to 129600.", 'invalid_request', 422);
+                }
+                $at = $at['at'];
+            }
             try {
                 $ts = (new DateTimeImmutable($at))->getTimestamp();
             } catch (\Throwable) {
                 throw new CalendarRequestRejected("since.{$event} must be an ISO 8601 instant.", 'invalid_request', 422);
             }
-            $minutes = (int) ($waits[$event] ?? 0);
+            $minutes = $own ?? (int) ($waits[$event] ?? 0);
             if ($minutes > 0) {
                 $floor = max($floor ?? 0, $ts + $minutes * 60);
             }

@@ -619,6 +619,34 @@ class ClientTest extends TestCase
         $this->assertSame('held', $fake->hold('call-1', new DateTimeImmutable('2026-10-12T15:00:00Z'), 'k-2', ['since' => $since])->state);
     }
 
+    /** One booker's event carrying its own wait travels as {at, wait}; the fake honours it as the service does. */
+    public function test_an_events_own_wait_travels_and_the_fake_keeps_it(): void
+    {
+        $client = $this->client($this->json(200, ['success' => true, 'data' => ['slots' => [], 'opens_at' => null]]));
+        $client->slotsOpening('call-1', new DateTimeImmutable('2026-10-12T00:00:00Z'), new DateTimeImmutable('2026-10-13T00:00:00Z'), null,
+            ['case_accepted' => ['at' => new DateTimeImmutable('2026-10-11T14:30:00Z'), 'wait' => 60]]);
+        parse_str($this->history[0]['request']->getUri()->getQuery(), $q);
+        $this->assertSame(['case_accepted' => ['at' => '2026-10-11T14:30:00+00:00', 'wait' => '60']], $q['since']);
+
+        $fake = (new FakeCalendarClient())->withSlots('call-1', [
+            new Slot(new DateTimeImmutable('2026-10-12T14:00:00Z'), new DateTimeImmutable('2026-10-12T15:00:00Z'), ['auth-1']),
+            new Slot(new DateTimeImmutable('2026-10-12T15:00:00Z'), new DateTimeImmutable('2026-10-12T16:00:00Z'), ['auth-1']),
+        ]);
+        $fake->travelTo(new DateTimeImmutable('2026-10-01T12:00:00Z'));
+        $fake->setSchedulingPolicy(['wait_after' => ['case_accepted' => 1440]]);
+        [$from, $to] = [new DateTimeImmutable('2026-10-12T00:00:00Z'), new DateTimeImmutable('2026-10-13T00:00:00Z')];
+
+        // A wait of none on this one case, although the standard is a day: both times.
+        $this->assertCount(2, $fake->slots('call-1', $from, $to, null, ['case_accepted' => ['at' => '2026-10-11T14:30:00Z', 'wait' => 0]]));
+        // 25 hours on this case: opens 15:30Z, so neither.
+        $out = $fake->slotsOpening('call-1', $from, $to, null, ['case_accepted' => ['at' => '2026-10-11T14:30:00Z', 'wait' => 1500]]);
+        $this->assertSame([], $out['slots']);
+        $this->assertSame('2026-10-12T15:30:00+00:00', $out['opens_at']->format(DATE_ATOM));
+
+        $this->expectException(CalendarRequestRejected::class);
+        $fake->slots('call-1', $from, $to, null, ['case_accepted' => ['at' => '2026-10-11T14:30:00Z', 'wait' => -1]]);
+    }
+
     public function test_a_hosts_own_wait_and_its_limit_are_sent(): void
     {
         $this->client($this->json(200, ['data' => ['call_tool' => null, 'requires_approval' => false, 'booking_mode' => 'native', 'wait_after' => ['case_accepted' => 2880]]]))

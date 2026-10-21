@@ -190,18 +190,23 @@ class CalendarServiceClient implements CalendarClient
     }
 
     /**
-     * Events as the service reads them: name => ISO 8601 instant. Null (send nothing) when none.
+     * Events as the service reads them: name => ISO 8601 instant, or {at, wait} when this booker's
+     * event carries its own wait in minutes (it replaces the hosts' and the policy's for this
+     * request). Null (send nothing) when none.
      *
-     * @param  array<string, DateTimeInterface|string|null>|null  $since
-     * @return array<string, string>|null
+     * @param  array<string, DateTimeInterface|string|array{at: DateTimeInterface|string|null, wait: int}|null>|null  $since
+     * @return array<string, string|array{at: string, wait: int}>|null
      */
     public static function since(?array $since): ?array
     {
         $out = [];
-        foreach ($since ?? [] as $event => $at) {
-            if ($at !== null && $at !== '') {
-                $out[(string) $event] = $at instanceof DateTimeInterface ? $at->format(DATE_ATOM) : (string) $at;
+        foreach ($since ?? [] as $event => $value) {
+            $at = is_array($value) ? ($value['at'] ?? null) : $value;
+            if ($at === null || $at === '') {
+                continue;
             }
+            $at = $at instanceof DateTimeInterface ? $at->format(DATE_ATOM) : (string) $at;
+            $out[(string) $event] = is_array($value) && array_key_exists('wait', $value) ? ['at' => $at, 'wait' => $value['wait']] : $at;
         }
 
         return $out === [] ? null : $out;
