@@ -21,13 +21,13 @@ use Shirahcan\CalendarClient\Exceptions\SlotUnavailable;
  */
 class FakeCalendarClient implements CalendarClient
 {
-    /** The policy's cancel / reschedule notice, as the service enforces it (0 = none; tests set it). */
+    /** The policy's cancel / reschedule notice, as the service enforces it (0 = none; tests set it). Both bind the booker only. */
     public int $cancelNoticeMinutes = 0;
 
     public int $rescheduleNoticeMinutes = 0;
 
     /** As the service: inside the notice the person is refused, with the sentence they read. */
-    private function assertNotice(array $b, int $minutes, string $what): void
+    private function assertNotice(array $b, int $minutes, string $what, ?string $alternative = null): void
     {
         if ($minutes <= 0) {
             return;
@@ -37,7 +37,7 @@ class FakeCalendarClient implements CalendarClient
         if ($start !== false && $start - $now < $minutes * 60) {
             $words = $minutes % 60 === 0 ? (intdiv($minutes, 60) === 1 ? '1 hour' : intdiv($minutes, 60).' hours') : "{$minutes} minutes";
 
-            throw new CalendarRequestRejected("{$what} must be made at least {$words} before the meeting.", 'notice_window', 409);
+            throw new CalendarRequestRejected("{$what} must be made at least {$words} before the meeting.", 'notice_window', 409, [], $alternative);
         }
     }
 
@@ -838,8 +838,15 @@ class FakeCalendarClient implements CalendarClient
 
     public function cancel(string $bookingId, string $by, ?string $actor = null, ?string $reason = null): Booking
     {
-        if (($by === 'host' || $by === 'booker') && isset($this->bookings[$bookingId])) {
-            $this->assertNotice($this->bookings[$bookingId], $this->cancelNoticeMinutes, 'Cancellation');
+        // As the service: the notice binds the booker only, who is offered moving it instead
+        // whenever the reschedule notice still allows (owner 2026-10-22).
+        if ($by === 'booker' && isset($this->bookings[$bookingId])) {
+            $b = $this->bookings[$bookingId];
+            $start = strtotime((string) ($b['start_utc'] ?? ''));
+            $now = class_exists(\Carbon\Carbon::class) ? \Carbon\Carbon::now()->getTimestamp() : time();
+            $mayMove = in_array($b['state'] ?? null, [Booking::CONFIRMED, Booking::PENDING], true)
+                && ($this->rescheduleNoticeMinutes <= 0 || ($start !== false && $start - $now >= $this->rescheduleNoticeMinutes * 60));
+            $this->assertNotice($b, $this->cancelNoticeMinutes, 'Cancellation', $mayMove ? 'reschedule' : null);
         }
         $from = $this->find($bookingId)['state'];
         $b = $this->move($bookingId, [Booking::HELD, Booking::PENDING, Booking::CONFIRMED], Booking::CANCELLED);
@@ -1656,7 +1663,7 @@ class FakeCalendarClient implements CalendarClient
         'seed_weekly' => [['days' => ['mon', 'tue', 'wed', 'thu', 'fri'], 'start' => '09:00', 'end' => '17:00']],
         'observe_holidays_by_default' => true,
         'cancel_notice_minutes' => 1440,
-        'reschedule_notice_minutes' => 1440,
+        'reschedule_notice_minutes' => 0,
         'wait_after' => [],
         'wait_after_limits' => [],
         'call_tools_offered' => ['zoom', 'google_meet'],

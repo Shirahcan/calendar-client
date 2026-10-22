@@ -311,6 +311,44 @@ class ClientTest extends TestCase
         $this->assertSame('cancelled', $fake->cancel($booking->id, 'product')->state);
     }
 
+    public function test_a_late_booker_cancel_offers_moving_it_and_a_host_always_cancels(): void
+    {
+        $fake = new FakeCalendarClient();
+        $soon = new DateTimeImmutable('+2 hours');
+        $booking = $fake->createMeeting(['auth-1'], $soon, $soon->modify('+30 minutes'), 'k-late');
+        $fake->cancelNoticeMinutes = 1440;
+
+        try {
+            $fake->cancel($booking->id, 'booker');
+            $this->fail('a booker inside the notice must be refused');
+        } catch (\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected $e) {
+            $this->assertSame('notice_window', $e->errorCode);
+            $this->assertSame('reschedule', $e->alternative, 'moving it is offered while the booker still may');
+        }
+
+        $fake->rescheduleNoticeMinutes = 1440;
+        try {
+            $fake->cancel($booking->id, 'booker');
+            $this->fail('still refused');
+        } catch (\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected $e) {
+            $this->assertNull($e->alternative, 'no alternative the booker could not take');
+        }
+
+        $this->assertSame('cancelled', $fake->cancel($booking->id, 'host')->state);
+    }
+
+    public function test_the_client_reads_the_offered_alternative_from_the_service(): void
+    {
+        $response = new \GuzzleHttp\Psr7\Response(409);
+        $e = \Shirahcan\CalendarClient\CalendarServiceClient::errorFor($response, [
+            'message' => 'Cancellation must be made at least 24 hours before the meeting.',
+            'errors' => ['code' => 'notice_window', 'alternative' => 'reschedule'],
+        ]);
+
+        $this->assertInstanceOf(\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected::class, $e);
+        $this->assertSame('reschedule', $e->alternative);
+    }
+
     public function test_the_fake_imports_a_past_meeting_once_and_searches_by_who_and_when(): void
     {
         $fake = new FakeCalendarClient();

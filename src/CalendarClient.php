@@ -214,7 +214,11 @@ interface CalendarClient
 
     public function declineProposal(string $proposalId, ?string $actor = null): array;
 
-    /** @param 'host'|'booker'|'product'|'system' $by */
+    /**
+     * @param 'host'|'booker'|'product'|'system' $by only a booker is held to the policy's cancel
+     *        notice; refused inside it (notice_window), the exception's `alternative` is
+     *        `reschedule` when the booker may still move it instead
+     */
     public function cancel(string $bookingId, string $by, ?string $actor = null, ?string $reason = null): Booking;
 
     /** @param 'attended'|'no_show'|'late' $status */

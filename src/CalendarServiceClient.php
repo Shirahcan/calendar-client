@@ -711,13 +711,14 @@ class CalendarServiceClient implements CalendarClient
         $code = is_array($errors) && is_string($errors['code'] ?? null) ? $errors['code'] : null;
         $message = (string) ($json['message'] ?? "calendar-service answered {$status}");
         $list = is_array($errors) && array_is_list($errors) ? $errors : [];
+        $alternative = is_array($errors) && is_string($errors['alternative'] ?? null) ? $errors['alternative'] : null;
 
         return match (true) {
             $code === 'slot_unavailable' => new SlotUnavailable($message, $code, $status),
             $code === 'hold_expired' || $status === 410 => new HoldExpired($message, $code, $status),
             $status === 404 => new CalendarNotFound($message, $code, $status),
             $status >= 500 || $status === 429 => new CalendarServiceUnavailable($message, $code ?? 'server_error', $status),
-            in_array($status, [409, 422], true) => new CalendarRequestRejected($message, $code, $status, $list),
+            in_array($status, [409, 422], true) => new CalendarRequestRejected($message, $code, $status, $list, $alternative),
             // 401: this product's trust key is missing, wrong or revoked. A deployment fault.
             default => new CalendarServiceException($message, $code ?? 'unexpected', $status, $list),
         };
