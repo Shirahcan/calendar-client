@@ -687,6 +687,16 @@ class FakeCalendarClient implements CalendarClient
         if ($was === Booking::PENDING && $due !== null && new DateTimeImmutable($due) <= $this->now()) {
             throw new CalendarRequestRejected('The time to answer this booking has passed.', 'approval_expired', 409);
         }
+        // As the service: the booker's yes to a booking needing its own approval, whose host also
+        // approves their bookings, leaves it pending for the host with no deadline.
+        $b = $this->find($bookingId);
+        if ($was === Booking::PENDING && ($b['approval_required'] ?? false)
+            && ((bool) ($this->bookingTypes[$b['booking_type']]['approval']['required'] ?? false)
+                || array_filter((array) ($b['hosts'] ?? []), fn ($h) => (bool) ($this->hostPreferences[$h]['requires_approval'] ?? false)) !== [])) {
+            $this->record($bookingId, 'booker_approved', Booking::PENDING, Booking::PENDING, $actor);
+
+            return $this->save(['approval_required' => false, 'respond_by' => null] + $b);
+        }
         $booking = $this->move($bookingId, [Booking::PENDING, Booking::CONFIRMED], Booking::CONFIRMED);
         if ($was === Booking::PENDING) {
             $this->record($bookingId, 'approved', $was, Booking::CONFIRMED, $actor);

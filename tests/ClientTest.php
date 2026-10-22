@@ -111,6 +111,20 @@ class ClientTest extends TestCase
         $fake->hold('consult', $slot->start, 'k-2', ['respond_by' => '2026-10-11T12:00:00Z']);
     }
 
+    public function test_the_fakes_booker_yes_waits_for_a_host_who_approves(): void
+    {
+        $slot = new Slot(new DateTimeImmutable('2026-10-12T13:00:00Z'), new DateTimeImmutable('2026-10-12T14:00:00Z'), ['auth-1']);
+        $fake = (new FakeCalendarClient())->withSlots('consult', [$slot])->travelTo(new DateTimeImmutable('2026-10-01T12:00:00Z'));
+        $fake->setHostPreferences('auth-1', ['requires_approval' => true]);
+
+        $held = $fake->hold('consult', $slot->start, 'k-1', ['approval' => true, 'respond_by' => '2026-10-10T12:00:00Z']);
+        $fake->confirm($held->id);
+        $yes = $fake->approve($held->id, 'client');
+        $this->assertSame(Booking::PENDING, $yes->state);
+        $this->assertNull($yes->raw['respond_by']);
+        $this->assertSame(Booking::CONFIRMED, $fake->approve($held->id, 'host')->state);
+    }
+
     public function test_service_error_codes_become_typed_exceptions(): void
     {
         $cases = [
