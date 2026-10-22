@@ -71,6 +71,11 @@ Errors: `SlotUnavailable` (pick again), `HoldExpired` (start again), `CalendarNo
 `CalendarRequestRejected` (`->errors` lists every problem), `CalendarServiceUnavailable`
 (fail closed; never fall back to a local engine).
 
+**Calendar attachments and links** (`Shirahcan\CalendarClient\Ics`): `Ics` builds the .ics a mail attaches
+(`IcsEvent`, `IcsPerson`), and `CalendarLinks::google()` / `::outlook()` build the "Add to calendar" links
+(exact instants; Google can be told which zone to show the event in). Apple has no web form, so a
+product links its own .ics download for it. Never build these URLs by hand (0.53.0).
+
 ## The product-side kit (`Shirahcan\CalendarClient\Laravel`)
 
 Every product wires calendar-service the same way. Do not write your own copy of any of these.
