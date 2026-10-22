@@ -137,7 +137,12 @@ interface CalendarClient
 
     // Booking lifecycle
 
-    /** @param array $details product_ref, host (preferred, round-robin), title, description, location, participants[], ttl, actor, since (see slotsOpening) */
+    /**
+     * @param array $details product_ref, host (preferred, round-robin), title, description, location, participants[], ttl, actor,
+     *     since (see slotsOpening), approval (this booking alone needs approval: confirm makes it pending, its time kept) and
+     *     respond_by (with approval: the answer's deadline, ahead and no later than the start; past it the service expires
+     *     the booking, frees the time and sends `booking.approval_expired`, and approve() is refused)
+     */
     public function hold(string $bookingTypeRef, DateTimeInterface $start, string $idempotencyKey, array $details = []): Booking;
 
     public function extendHold(string $bookingId, int $seconds): Booking;

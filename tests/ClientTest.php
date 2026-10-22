@@ -72,6 +72,45 @@ class ClientTest extends TestCase
         $this->assertSame('case:9', $body['product_ref']);
     }
 
+    public function test_a_hold_may_need_approval_on_its_own_with_a_deadline(): void
+    {
+        $this->client($this->json(201, ['data' => $this->bookingData(['approval_required' => true, 'respond_by' => '2026-10-10T12:00:00Z'])]))
+            ->hold('consult', new DateTimeImmutable('2026-10-12T13:00:00Z'), 'k-1', ['approval' => true, 'respond_by' => '2026-10-10T12:00:00Z']);
+
+        // The real request carries both (a key the client dropped would "work" in a product's tests on the fake only).
+        $body = json_decode((string) $this->history[0]['request']->getBody(), true);
+        $this->assertTrue($body['approval']);
+        $this->assertSame('2026-10-10T12:00:00Z', $body['respond_by']);
+    }
+
+    public function test_the_fake_keeps_one_bookings_approval_and_expires_it_unanswered(): void
+    {
+        $slot = new Slot(new DateTimeImmutable('2026-10-12T13:00:00Z'), new DateTimeImmutable('2026-10-12T14:00:00Z'), ['auth-1']);
+        $fake = (new FakeCalendarClient())->withSlots('consult', [$slot])->travelTo(new DateTimeImmutable('2026-10-01T12:00:00Z'));
+
+        $held = $fake->hold('consult', $slot->start, 'k-1', ['approval' => true, 'respond_by' => '2026-10-10T12:00:00Z']);
+        $this->assertTrue($held->raw['approval_required']);
+        $this->assertSame(Booking::PENDING, $fake->confirm($held->id)->state);
+
+        // Not yet due: nothing expires, and the answer is still taken.
+        $this->assertSame([], $fake->sweep());
+
+        $fake->travelTo(new DateTimeImmutable('2026-10-10T12:00:01Z'));
+        try {
+            $fake->approve($held->id);
+            $this->fail('an answer after the deadline is refused');
+        } catch (\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected $e) {
+            $this->assertSame('approval_expired', $e->errorCode);
+        }
+        $this->assertSame([$held->id], $fake->sweep());
+        $this->assertSame(Booking::EXPIRED, $fake->booking($held->id)->state);
+        $this->assertSame([], $fake->sweep());
+
+        // A deadline needs approval, and must sit before the start.
+        $this->expectException(\Shirahcan\CalendarClient\Exceptions\CalendarRequestRejected::class);
+        $fake->hold('consult', $slot->start, 'k-2', ['respond_by' => '2026-10-11T12:00:00Z']);
+    }
+
     public function test_service_error_codes_become_typed_exceptions(): void
     {
         $cases = [

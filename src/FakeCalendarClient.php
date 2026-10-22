@@ -101,6 +101,27 @@ class FakeCalendarClient implements CalendarClient
         return $this;
     }
 
+    /**
+     * As the service's minute sweep, for pending bookings nobody answered by their respond_by: each
+     * becomes expired (its time free). Returns their ids, so a test can deliver the product the
+     * `booking.approval_expired` webhook the service would send.
+     *
+     * @return list<string>
+     */
+    public function sweep(): array
+    {
+        $expired = [];
+        foreach ($this->bookings as $id => $b) {
+            if ($b['state'] === Booking::PENDING && ($b['respond_by'] ?? null) !== null && new DateTimeImmutable($b['respond_by']) <= $this->now()) {
+                $this->record($id, 'approval_expired', Booking::PENDING, Booking::EXPIRED, 'system');
+                $this->move($id, [Booking::PENDING], Booking::EXPIRED);
+                $expired[] = $id;
+            }
+        }
+
+        return $expired;
+    }
+
     public function upsertHost(string $authId, ?string $name = null, ?string $zone = null): array
     {
         $this->log(__FUNCTION__, func_get_args());
@@ -583,6 +604,17 @@ class FakeCalendarClient implements CalendarClient
             }
         }
 
+        // As the service: a deadline for an answer is ahead, no later than the start, and only with approval.
+        $respondBy = null;
+        if (! empty($details['respond_by'])) {
+            $respondBy = $details['respond_by'] instanceof DateTimeInterface
+                ? DateTimeImmutable::createFromInterface($details['respond_by'])
+                : new DateTimeImmutable((string) $details['respond_by']);
+            if (empty($details['approval']) || $respondBy <= $this->now() || $respondBy > DateTimeImmutable::createFromInterface($start)) {
+                throw new CalendarRequestRejected('respond_by must be a time in the future, no later than the booking start, for a booking that needs approval.', 'invalid', 422);
+            }
+        }
+
         $closed = $this->linkClosed($bookingTypeRef);
         if ($closed !== null) {
             throw new CalendarRequestRejected(match ($closed) {
@@ -613,6 +645,8 @@ class FakeCalendarClient implements CalendarClient
             // As the service: a hold keeps its text and the zone it was booked in.
             'title' => $details['title'] ?? null, 'description' => $details['description'] ?? null,
             'location' => $details['location'] ?? null, 'zone' => $details['zone'] ?? null,
+            'approval_required' => ! empty($details['approval']),
+            'respond_by' => $respondBy ? $this->iso($respondBy) : null,
         ];
 
         return Booking::fromArray($this->bookings[$id]);
@@ -634,7 +668,8 @@ class FakeCalendarClient implements CalendarClient
     public function confirm(string $bookingId, ?string $actor = null): Booking
     {
         $this->live($bookingId, Booking::HELD);
-        $needsApproval = (bool) ($this->bookingTypes[$this->bookings[$bookingId]['booking_type']]['approval']['required'] ?? false)
+        $needsApproval = (bool) ($this->bookings[$bookingId]['approval_required'] ?? false)
+            || (bool) ($this->bookingTypes[$this->bookings[$bookingId]['booking_type']]['approval']['required'] ?? false)
             // As the service: any host who approves their own bookings makes it pending too.
             || array_filter((array) ($this->bookings[$bookingId]['hosts'] ?? []), fn ($h) => (bool) ($this->hostPreferences[$h]['requires_approval'] ?? false)) !== [];
 
@@ -645,8 +680,13 @@ class FakeCalendarClient implements CalendarClient
 
     public function approve(string $bookingId, ?string $actor = null): Booking
     {
-        // As the service: approving a booking that is already confirmed changes nothing.
+        // As the service: approving a booking that is already confirmed changes nothing, and an
+        // answer after its deadline is refused.
         $was = $this->find($bookingId)['state'];
+        $due = $this->find($bookingId)['respond_by'] ?? null;
+        if ($was === Booking::PENDING && $due !== null && new DateTimeImmutable($due) <= $this->now()) {
+            throw new CalendarRequestRejected('The time to answer this booking has passed.', 'approval_expired', 409);
+        }
         $booking = $this->move($bookingId, [Booking::PENDING, Booking::CONFIRMED], Booking::CONFIRMED);
         if ($was === Booking::PENDING) {
             $this->record($bookingId, 'approved', $was, Booking::CONFIRMED, $actor);
