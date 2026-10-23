@@ -171,16 +171,18 @@ class CalendarServiceClient implements CalendarClient
         return $out;
     }
 
-    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null): array
+    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null, ?array $alsoFree = null): array
     {
-        return $this->slotsOpening($bookingTypeRef, $from, $to, $durationMinutes, $since)['slots'];
+        return $this->slotsOpening($bookingTypeRef, $from, $to, $durationMinutes, $since, $alsoFree)['slots'];
     }
 
-    public function slotsOpening(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null): array
+    public function slotsOpening(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null, ?array $alsoFree = null): array
     {
         $data = $this->send('GET', 'api/v1/booking-types/'.rawurlencode($bookingTypeRef).'/slots', array_filter([
             'from' => $from->format(DATE_ATOM), 'to' => $to->format(DATE_ATOM), 'duration' => $durationMinutes,
             'since' => self::since($since),
+            // Sent only when someone must also be free, so every older caller's request is unchanged.
+            'also_free' => $alsoFree ? array_values(array_unique(array_map('strval', $alsoFree))) : null,
         ], fn ($v) => $v !== null));
 
         return [

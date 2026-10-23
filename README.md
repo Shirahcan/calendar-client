@@ -36,6 +36,12 @@ $hold = $calendar->hold('consultation-30', $slots[0]->start, $idempotencyKey, ['
 $booking = $calendar->confirm($hold->id);   // store $booking->id on your record
 ```
 
+**Someone else must be free too.** `slots($ref, $from, $to, null, null, alsoFree: [$guestAuthId])`
+lists only the times a guest (not a host) is also free: their hosted AND attended bookings, held
+proposals and connected calendars close times (calendar-service `also_free[]`, at most 5). It is a
+listing filter: `hold()`/`confirm()` never re-check a guest. The fake honours it from its own
+bookings and `withBusy($authId, [[$start, $end]])`.
+
 **Days are the viewer's.** Slots are UTC instants; a day only exists in somebody's zone, and on a
 booking screen that is the BOOKER's. List "the slots on Sep 29" with
 `ViewerDay::window('2026-09-29', $bookerZone)` as `$from`/`$to`, count a month with

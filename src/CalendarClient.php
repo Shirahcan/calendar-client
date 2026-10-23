@@ -115,9 +115,14 @@ interface CalendarClient
      * `$durationMinutes`: a length the booking type offers in its `durations` (null = its
      * default). Pass the same length as `details['duration']` to hold().
      *
+     * `$alsoFree`: auth ids of people who must ALSO be free (a guest the product wants on the call,
+     * not a host): their hosted and attended bookings and connected calendars close times. At most
+     * 5. A listing filter only; hold() and confirm() never re-check a guest.
+     *
+     * @param  list<string>|null  $alsoFree
      * @return list<Slot>
      */
-    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null): array;
+    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null, ?array $alsoFree = null): array;
 
     /**
      * slots(), with the first instant booking opens when a wait closes the start of the range.
@@ -128,9 +133,10 @@ interface CalendarClient
      * and to reschedule() / rebook() when the booker moves, or it is refused (not_open_yet).
      *
      * @param  array<string, DateTimeInterface|string|null>|null  $since
+     * @param  list<string>|null  $alsoFree  as slots()
      * @return array{slots: list<Slot>, opens_at: ?\DateTimeImmutable}
      */
-    public function slotsOpening(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null): array;
+    public function slotsOpening(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null, ?array $alsoFree = null): array;
 
     /** An inline spec: computed, never stored, never bookable. @return list<Slot> */
     public function previewSlots(array $spec, array $rules, DateTimeInterface $from, DateTimeInterface $to, ?string $hostAuthId = null): array;

@@ -86,6 +86,24 @@ class FakeCalendarClient implements CalendarClient
         return $this;
     }
 
+    /** @var array<string, list<array{0: int, 1: int}>> auth id => busy from their connected calendars */
+    private array $externalBusy = [];
+
+    /**
+     * A person's busy time on their connected calendars, as the service would read it: what
+     * `also_free` closes besides their bookings.
+     *
+     * @param  list<array{0: DateTimeInterface, 1: DateTimeInterface}>  $intervals
+     */
+    public function withBusy(string $authId, array $intervals): self
+    {
+        foreach ($intervals as [$start, $end]) {
+            $this->externalBusy[$authId][] = [$start->getTimestamp(), $end->getTimestamp()];
+        }
+
+        return $this;
+    }
+
     /** Make the next call throw, e.g. new CalendarServiceUnavailable('down') to test fail-closed. */
     public function failNext(CalendarServiceException $e): self
     {
@@ -485,27 +503,31 @@ class FakeCalendarClient implements CalendarClient
         return $out;
     }
 
-    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null): array
+    public function slots(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null, ?array $alsoFree = null): array
     {
         $this->log(__FUNCTION__, func_get_args());
 
-        return $this->slotsWithin($bookingTypeRef, $from, $to, $durationMinutes, $since)['slots'];
+        return $this->slotsWithin($bookingTypeRef, $from, $to, $durationMinutes, $since, $alsoFree)['slots'];
     }
 
-    public function slotsOpening(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null): array
+    public function slotsOpening(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes = null, ?array $since = null, ?array $alsoFree = null): array
     {
         $this->log(__FUNCTION__, func_get_args());
 
-        return $this->slotsWithin($bookingTypeRef, $from, $to, $durationMinutes, $since);
+        return $this->slotsWithin($bookingTypeRef, $from, $to, $durationMinutes, $since, $alsoFree);
     }
 
     /** @return array{slots: list<Slot>, opens_at: ?DateTimeImmutable} */
-    private function slotsWithin(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes, ?array $since): array
+    private function slotsWithin(string $bookingTypeRef, DateTimeInterface $from, DateTimeInterface $to, ?int $durationMinutes, ?array $since, ?array $alsoFree = null): array
     {
         // The fake does not compute: seed slots of each length with withSlots(); a chosen length
         // returns only the seeded slots of that length. A closed link offers nothing, as the service.
         if ($this->linkClosed($bookingTypeRef) !== null) {
             return ['slots' => [], 'opens_at' => null];
+        }
+        // As the service: at most 5 people who must also be free, each a non-empty id.
+        if ($alsoFree !== null && (count($alsoFree) > 5 || in_array('', array_map('strval', $alsoFree), true))) {
+            throw new CalendarRequestRejected('also_free must be a list of at most 5 person ids.', 'invalid_request', 422);
         }
 
         // A wait after a reported event (each host's own, else the policy's): nothing before it is offered.
@@ -527,7 +549,49 @@ class FakeCalendarClient implements CalendarClient
             }
         ));
 
+        // Only the times every listed person is also free for (the service's BusyCollector::forPerson).
+        if ($alsoFree) {
+            $slots = array_values(array_filter($slots, function (Slot $s) use ($alsoFree) {
+                foreach ($alsoFree as $person) {
+                    if ($this->personBusy((string) $person, $s->start->getTimestamp(), $s->end->getTimestamp())) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }));
+        }
+
         return ['slots' => $slots, 'opens_at' => $opensAt === null ? null : (new DateTimeImmutable('@'.$opensAt))];
+    }
+
+    /**
+     * Is this person busy anywhere in [start, end)? As the service: live bookings they host or
+     * attend (held and unexpired, pending, confirmed), and their connected calendars (withBusy()).
+     */
+    private function personBusy(string $authId, int $start, int $end): bool
+    {
+        foreach ($this->externalBusy[$authId] ?? [] as [$from, $to]) {
+            if ($from < $end && $to > $start) {
+                return true;
+            }
+        }
+
+        foreach ($this->bookings as $b) {
+            if (! in_array($b['state'], [Booking::HELD, Booking::PENDING, Booking::CONFIRMED], true)) {
+                continue;
+            }
+            if ($b['state'] === Booking::HELD && $b['hold_expires_at'] !== null && new DateTimeImmutable($b['hold_expires_at']) <= $this->now()) {
+                continue;
+            }
+            $on = in_array($authId, (array) ($b['hosts'] ?? []), true)
+                || in_array($authId, array_map('strval', array_column((array) ($b['participants'] ?? []), 'auth_id')), true);
+            if ($on && (new DateTimeImmutable($b['start_utc']))->getTimestamp() < $end && (new DateTimeImmutable($b['end_utc']))->getTimestamp() > $start) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

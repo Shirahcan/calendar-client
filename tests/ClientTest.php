@@ -653,6 +653,46 @@ class ClientTest extends TestCase
         $this->assertArrayNotHasKey('duration', $q1);
     }
 
+    public function test_also_free_is_sent_only_when_someone_must_also_be_free(): void
+    {
+        $client = $this->client(
+            $this->json(200, ['success' => true, 'data' => ['slots' => []]]),
+            $this->json(200, ['success' => true, 'data' => ['slots' => []]]),
+        );
+        [$from, $to] = [new DateTimeImmutable('2026-10-12T00:00:00Z'), new DateTimeImmutable('2026-10-13T00:00:00Z')];
+
+        $client->slots('call-1', $from, $to, null, null, ['partner-1', 'partner-1']);
+        $client->slots('call-1', $from, $to, null, null, []);
+
+        parse_str($this->history[0]['request']->getUri()->getQuery(), $q0);
+        parse_str($this->history[1]['request']->getUri()->getQuery(), $q1);
+        $this->assertSame(['partner-1'], $q0['also_free'], 'sent once, de-duplicated');
+        $this->assertArrayNotHasKey('also_free', $q1, 'an empty list sends nothing, so older requests are unchanged');
+    }
+
+    public function test_the_fake_closes_times_a_guest_is_busy(): void
+    {
+        $slot = fn (string $hm) => new Slot(new DateTimeImmutable("2026-10-12T{$hm}:00Z"), (new DateTimeImmutable("2026-10-12T{$hm}:00Z"))->modify('+1 hour'), ['auth-1']);
+        $fake = (new FakeCalendarClient())->withSlots('call-1', [$slot('13:00'), $slot('14:00'), $slot('15:00')]);
+        $fake->travelTo(new DateTimeImmutable('2026-10-01T12:00:00Z'));
+        [$from, $to] = [new DateTimeImmutable('2026-10-12T00:00:00Z'), new DateTimeImmutable('2026-10-13T00:00:00Z')];
+
+        // Their own connected calendar says 13:00 is busy.
+        $fake->withBusy('partner-1', [[new DateTimeImmutable('2026-10-12T13:00:00Z'), new DateTimeImmutable('2026-10-12T14:00:00Z')]]);
+        // And they attend another call at 15:00 (an attendee, not a host).
+        $fake->withSlots('other', [new Slot(new DateTimeImmutable('2026-10-12T15:00:00Z'), new DateTimeImmutable('2026-10-12T16:00:00Z'), ['auth-2'])]);
+        $booking = $fake->hold('other', new DateTimeImmutable('2026-10-12T15:00:00Z'), 'k-1', ['participants' => [['auth_id' => 'partner-1', 'role' => 'attendee']]]);
+        $fake->confirm($booking->id);
+
+        $starts = fn (?array $alsoFree) => array_map(fn (Slot $s) => $s->start->format('H:i'), $fake->slots('call-1', $from, $to, null, null, $alsoFree));
+        $this->assertSame(['14:00'], $starts(['partner-1']));
+        // Nobody else asked for: the host's times are the fake's own (15:00 is taken by the other booking).
+        $this->assertSame(['13:00', '14:00'], $starts(null));
+
+        $this->expectException(CalendarRequestRejected::class);
+        $fake->slots('call-1', $from, $to, null, null, ['a', 'b', 'c', 'd', 'e', 'f']);
+    }
+
     public function test_since_travels_on_slots_hold_and_moves_and_opens_at_comes_back(): void
     {
         $client = $this->client(
