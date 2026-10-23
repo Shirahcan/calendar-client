@@ -914,6 +914,26 @@ class ClientTest extends TestCase
         $this->assertTrue($fake->setSchedulingPolicy(null)['is_default']);
     }
 
+    public function test_the_fake_refuses_open_ended_weekly_hours_when_the_policy_needs_dates(): void
+    {
+        $fake = new FakeCalendarClient();
+        $open = ['schema' => 1, 'timezone' => ['zone' => 'UTC'], 'weekly' => [['days' => ['mon'], 'start' => '09:00', 'end' => '12:00']]];
+        $this->assertFalse($fake->schedulingPolicy()['policy']['weekly_hours_need_dates']);
+        $fake->upsertSchedule('a', null, $open);
+
+        $fake->setSchedulingPolicy(['weekly_hours_need_dates' => true]);
+        try {
+            $fake->upsertSchedule('a', null, $open);
+            $this->fail('An open-ended row must be refused.');
+        } catch (CalendarRequestRejected $e) {
+            $this->assertSame(422, $e->status);
+            $this->assertSame(['weekly.0 needs a start and an end date: weekly hours are only offered for a set period.'], $e->errors);
+        }
+
+        $open['weekly'][0] += ['valid_from' => '2026-10-26', 'valid_until' => '2026-11-06'];
+        $this->assertSame('2026-11-06', $fake->upsertSchedule('a', null, $open)['spec']['weekly'][0]['valid_until']);
+    }
+
     public function test_bookable_refs_are_asked_of_the_service(): void
     {
         $client = $this->client($this->json(200, ['data' => ['a']]), $this->json(200, ['data' => ['a']]));

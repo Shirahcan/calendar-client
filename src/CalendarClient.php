@@ -517,6 +517,8 @@ interface CalendarClient
 
     /**
      * The whole policy (keys left out fall back to the service defaults); null = the defaults.
+     * `weekly_hours_need_dates` true: upsertSchedule refuses (422) a weekly row without both
+     * `valid_from` and `valid_until` (hours offered only for a set period).
      *
      * @param  array<string, mixed>|null  $policy
      * @return array{policy: array<string, mixed>, is_default: bool, defaults: array<string, mixed>}

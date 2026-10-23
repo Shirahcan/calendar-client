@@ -151,6 +151,19 @@ class FakeCalendarClient implements CalendarClient
     {
         $this->log(__FUNCTION__, func_get_args());
 
+        // The service's policy rule (weekly_hours_need_dates): no weekly row runs for ever.
+        if ($this->schedulingPayload()['policy']['weekly_hours_need_dates']) {
+            $errors = [];
+            foreach ((array) ($spec['weekly'] ?? []) as $i => $rule) {
+                if (empty($rule['valid_from']) || empty($rule['valid_until'])) {
+                    $errors[] = "weekly.{$i} needs a start and an end date: weekly hours are only offered for a set period.";
+                }
+            }
+            if ($errors !== []) {
+                throw new CalendarRequestRejected('The availability spec is not valid.', null, 422, $errors);
+            }
+        }
+
         return $this->schedules[$ref] = ['ref' => $ref, 'host' => $hostAuthId, 'spec' => $spec, 'spec_hash' => hash('sha256', json_encode($spec))];
     }
 
@@ -1726,6 +1739,7 @@ class FakeCalendarClient implements CalendarClient
         'hold_seconds' => 900,
         'seed_weekly' => [['days' => ['mon', 'tue', 'wed', 'thu', 'fri'], 'start' => '09:00', 'end' => '17:00']],
         'observe_holidays_by_default' => true,
+        'weekly_hours_need_dates' => false,
         'cancel_notice_minutes' => 1440,
         'reschedule_notice_minutes' => 0,
         'wait_after' => [],
